@@ -2,13 +2,13 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Dumbbell, Home, User, TrendingUp } from "lucide-react";
+import { UtensilsCrossed, Dumbbell, Home, User, Activity } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Home", href: "/", icon: Home },
-  { label: "Logs", href: "/logs", icon: BookOpen },
-  { label: "Progress", href: "/progress", icon: TrendingUp },
+  { label: "Workout", href: "/workouts", icon: Activity },
   { label: "Coach", href: "/coach", icon: Dumbbell },
+  { label: "Nutrition", href: "/nutrition", icon: UtensilsCrossed },
   { label: "Profile", href: "/profile", icon: User },
 ];
 

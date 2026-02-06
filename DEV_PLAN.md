@@ -43,7 +43,7 @@ We are building a **Responsive Web Application** called **GYMI**.
 - [x] Create `AppLayout` component that handles the switch between Mobile/Desktop.
 - [x] Build `BottomNav` (Mobile only: `flex md:hidden`).
 - [x] Build `SideNav` (Desktop only: `hidden md:flex`).
-- [x] Create skeleton pages (`/`, `/logs`, `/coach`, `/profile`).
+- [x] Create skeleton pages (`/`, `/workouts`, `/coach`, `/nutrition`, `/profile`).
 
 ### Phase 3: Auth & Onboarding (COMPLETE ✅)
 **Frontend:**
@@ -83,7 +83,7 @@ We are building a **Responsive Web Application** called **GYMI**.
 #### 4.1: Workout Logger (Week 1) - COMPLETE ✅
 
 **Features:**
-- [x] Display list of logged workouts (sorted by date, newest first)
+- [x] Display list of logged workouts (sorted by date, newest first) - Now on `/workouts`
 - [x] "Add Workout" button/modal
 - [x] Workout entry form with fields:
   - Exercise name (text input or predefined list)
@@ -121,7 +121,7 @@ We are building a **Responsive Web Application** called **GYMI**.
 #### 4.2: Nutrition Diary (Week 2) - COMPLETE ✅
 
 **Features:**
-- [x] Display list of logged meals (grouped by date)
+- [x] Display list of logged meals (grouped by date) - Now on `/nutrition`
 - [x] "Add Meal" button/modal
 - [x] Meal entry form with fields:
   - Meal name (text)
@@ -321,14 +321,15 @@ User Action → UI Component → Service Layer → Firestore
 
 - [x] **Progress Charts**
   - Created `WeightChart.tsx` with bar chart visualization
-  - Built `WorkoutVolumeChart.tsx` for tracking workout volume
+  - ~~Created `WorkoutVolumeChart.tsx` for tracking workout volume~~ (Removed - not needed)
   - Created `weightLogs.ts` service for weight tracking
-  - Created `/progress` page with dual charts
+  - ~~Created `/progress` page~~ (Removed - merged into `/profile`)
   - Weight tracking over time with trend indicators
-  - Workout volume over time (sets × reps × weight)
+  - ~~Workout volume over time~~ (Removed)
   - Stats display (current, change, target)
   - Tooltips on hover for detailed data
   - Target weight line visualization
+  - Weight tracker now integrated into `/profile` page
 
 - [ ] **Achievements & Milestones** - DEFERRED
   - Streak milestones (7, 30, 100 days)
@@ -478,6 +479,45 @@ User Action → UI Component → Service Layer → Firestore
   - Test on mobile devices
   - Test responsive breakpoints
   - Automated visual regression testing
+
+#### 4.5.7: Navigation Restructuring - COMPLETE ✅
+**Focus:** Reorganize app pages for better UX
+
+**Changes Made:**
+- [x] Split `/logs` page into two dedicated pages:
+  - `/workouts` - Workout-only page with search/filters
+  - `/nutrition` - Nutrition/meals-only page with search/filters
+- [x] Moved weight tracking from `/progress` to `/profile`:
+  - Added weight chart to profile
+  - Added weight logging modal to profile
+  - Added recent weight logs display
+- [x] Deleted `/progress` page completely
+  - Removed `WorkoutVolumeChart.tsx` (not needed)
+  - Kept only `WeightChart.tsx` (moved to profile)
+- [x] Updated navigation structure:
+  - **Before:** Home → Logs → Progress → Coach → Profile
+  - **After:** Home → Workout → Coach → Nutrition → Profile
+- [x] Updated BottomNav and SideNav:
+  - Changed icons: `BookOpen` → `Activity` (Workout), `TrendingUp` → `UtensilsCrossed` (Nutrition)
+  - Removed Progress link
+  - Updated href paths
+
+**File Structure Changes:**
+```
+OLD:
+├── app/(app)/
+│   ├── logs/page.tsx (with tabs: workouts & meals)
+│   ├── progress/page.tsx (weight & volume charts)
+│   ├── coach/page.tsx
+│   └── profile/page.tsx
+
+NEW:
+├── app/(app)/
+│   ├── workouts/page.tsx (workout-only)
+│   ├── nutrition/page.tsx (meals-only)
+│   ├── coach/page.tsx
+│   └── profile/page.tsx (with weight tracker)
+```
 
 #### Implementation Priority
 

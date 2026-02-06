@@ -60,17 +60,23 @@ export async function getGoals(uid: string, status?: Goal['status']): Promise<Go
   try {
     const goalsRef = collection(db, 'users', uid, 'goals');
     
-    let q = query(goalsRef, orderBy('createdAt', 'desc'));
-    
+    // If filtering by status, use where clause only (no orderBy to avoid index requirement)
+    // We'll sort in memory instead
+    let q;
     if (status) {
-      q = query(goalsRef, where('status', '==', status), orderBy('createdAt', 'desc'));
+      q = query(goalsRef, where('status', '==', status));
+    } else {
+      q = query(goalsRef);
     }
 
     const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({
+    const goals = snapshot.docs.map((doc) => ({
       ...convertTimestamps(doc.data()),
       id: doc.id,
     })) as Goal[];
+
+    // Sort by createdAt in descending order (most recent first)
+    return goals.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
   } catch (error: any) {
     console.error('Error fetching goals:', error);
     throw new Error(error.message || 'Failed to fetch goals');

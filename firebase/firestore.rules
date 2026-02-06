@@ -24,6 +24,21 @@ service cloud.firestore {
       match /meals/{mealId} {
         allow read, write: if isAuth() && isOwner(uid);
       }
+
+      // Subcollections: weight logs
+      match /weightLogs/{logId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      // Subcollections: goals
+      match /goals/{goalId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      // Subcollections: achievements
+      match /achievements/{achievementId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
     }
 
     // Public data (if needed in future)

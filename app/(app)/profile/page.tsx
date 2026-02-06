@@ -6,13 +6,15 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
 import { logoutUser } from '@/lib/auth';
 import { getActiveGoals, addGoal, updateGoal, deleteGoal, completeGoal } from '@/lib/goals';
-import { Goal } from '@/lib/types/firestore';
+import { getWeightLogs, addWeightLog } from '@/lib/weightLogs';
+import { Goal, WeightLog } from '@/lib/types/firestore';
 import AppLayout from '@/components/layout/AppLayout';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import GoalCard from '@/components/features/GoalCard';
 import GoalForm from '@/components/features/GoalForm';
 import Modal from '@/components/ui/Modal';
-import { Plus, Target } from 'lucide-react';
+import { WeightChart } from '@/components/features/WeightChart';
+import { Plus, Target, TrendingUp } from 'lucide-react';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -21,27 +23,41 @@ export default function ProfilePage() {
   const [loading, setLoading] = useState(false);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [goalsLoading, setGoalsLoading] = useState(true);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
-  const [formLoading, setFormLoading] = useState(false);
+  const [goalFormLoading, setGoalFormLoading] = useState(false);
+  
+  // Weight tracking states
+  const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
+  const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
+  const [newWeight, setNewWeight] = useState('');
+  const [newNotes, setNewNotes] = useState('');
+  const [weightSubmitting, setWeightSubmitting] = useState(false);
+  const [activeGoal, setActiveGoal] = useState<Goal | null>(null);
 
-  // Fetch active goals
+  // Fetch active goals and weight logs
   useEffect(() => {
     if (!user) return;
 
-    const fetchGoals = async () => {
+    const fetchData = async () => {
       try {
-        const data = await getActiveGoals(user.uid);
-        setGoals(data);
+        const [goalsData, weightsData] = await Promise.all([
+          getActiveGoals(user.uid),
+          getWeightLogs(user.uid, 30),
+        ]);
+        setGoals(goalsData);
+        setWeightLogs(weightsData);
+        const weightGoal = goalsData.find(g => g.type === 'weight');
+        setActiveGoal(weightGoal || null);
       } catch (error) {
-        console.error('Error fetching goals:', error);
-        showToast('Failed to load goals', 'error');
+        console.error('Error fetching data:', error);
+        showToast('Failed to load data', 'error');
       } finally {
         setGoalsLoading(false);
       }
     };
 
-    fetchGoals();
+    fetchData();
   }, [user, showToast]);
 
   const handleLogout = async () => {
@@ -60,7 +76,7 @@ export default function ProfilePage() {
   const handleAddGoal = async (data: Omit<Goal, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (!user) return;
 
-    setFormLoading(true);
+    setGoalFormLoading(true);
     try {
       const id = await addGoal(user.uid, data);
       const newGoal: Goal = {
@@ -70,20 +86,20 @@ export default function ProfilePage() {
         updatedAt: new Date(),
       };
       setGoals([newGoal, ...goals]);
-      setIsModalOpen(false);
+      setIsGoalModalOpen(false);
       showToast('Goal created successfully!', 'success');
     } catch (error: any) {
       console.error('Error adding goal:', error);
       showToast(error.message || 'Failed to create goal', 'error');
     } finally {
-      setFormLoading(false);
+      setGoalFormLoading(false);
     }
   };
 
   const handleUpdateGoal = async (data: Omit<Goal, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (!user || !editingGoal) return;
 
-    setFormLoading(true);
+    setGoalFormLoading(true);
     try {
       await updateGoal(user.uid, editingGoal.id, data);
       setGoals(
@@ -91,14 +107,54 @@ export default function ProfilePage() {
           g.id === editingGoal.id ? { ...g, ...data, updatedAt: new Date() } : g
         )
       );
-      setIsModalOpen(false);
+      setIsGoalModalOpen(false);
       setEditingGoal(null);
       showToast('Goal updated successfully!', 'success');
     } catch (error: any) {
       console.error('Error updating goal:', error);
       showToast(error.message || 'Failed to update goal', 'error');
     } finally {
-      setFormLoading(false);
+      setGoalFormLoading(false);
+    }
+  };
+
+  const handleAddWeight = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user || !newWeight) return;
+
+    setWeightSubmitting(true);
+    try {
+      const weight = parseFloat(newWeight);
+      if (weight <= 0) {
+        showToast('Please enter a valid weight', 'error');
+        return;
+      }
+
+      const id = await addWeightLog(user.uid, {
+        weight,
+        notes: newNotes.trim() || undefined,
+        date: new Date(),
+      });
+
+      const newLog: WeightLog = {
+        id,
+        weight,
+        notes: newNotes.trim() || undefined,
+        date: new Date(),
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      };
+
+      setWeightLogs([newLog, ...weightLogs]);
+      setIsWeightModalOpen(false);
+      setNewWeight('');
+      setNewNotes('');
+      showToast('Weight logged successfully!', 'success');
+    } catch (error: any) {
+      console.error('Error adding weight log:', error);
+      showToast(error.message || 'Failed to log weight', 'error');
+    } finally {
+      setWeightSubmitting(false);
     }
   };
 
@@ -134,11 +190,11 @@ export default function ProfilePage() {
 
   const handleEditGoal = (goal: Goal) => {
     setEditingGoal(goal);
-    setIsModalOpen(true);
+    setIsGoalModalOpen(true);
   };
 
-  const handleCloseModal = () => {
-    setIsModalOpen(false);
+  const handleCloseGoalModal = () => {
+    setIsGoalModalOpen(false);
     setEditingGoal(null);
   };
 
@@ -180,6 +236,71 @@ export default function ProfilePage() {
             </div>
           </div>
 
+          {/* Weight Tracker Section */}
+          <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 shadow-sm dark:border-zinc-800">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm font-semibold text-[color:var(--foreground)] flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4" />
+                  Weight Tracker
+                </p>
+                <p className="text-xs text-[color:var(--muted-foreground)]">
+                  Monitor your weight progress
+                </p>
+              </div>
+              <button
+                onClick={() => setIsWeightModalOpen(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[color:var(--foreground)] text-[color:var(--background)] text-sm font-medium hover:opacity-90"
+              >
+                <Plus className="w-4 h-4" />
+                Log
+              </button>
+            </div>
+
+            {weightLogs.length > 0 ? (
+              <>
+                <WeightChart data={weightLogs} targetWeight={activeGoal?.targetWeight} />
+                
+                <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
+                  <h4 className="text-xs font-semibold text-[color:var(--foreground)] mb-3">Recent Logs</h4>
+                  <div className="space-y-2">
+                    {weightLogs.slice(0, 5).map((log) => (
+                      <div
+                        key={log.id}
+                        className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                      >
+                        <div>
+                          <p className="text-sm font-medium text-[color:var(--foreground)]">
+                            {log.weight}kg
+                          </p>
+                          {log.notes && (
+                            <p className="text-xs text-[color:var(--muted-foreground)]">{log.notes}</p>
+                          )}
+                        </div>
+                        <p className="text-xs text-[color:var(--muted-foreground)]">
+                          {new Date(log.date).toLocaleDateString([], {
+                            month: 'short',
+                            day: 'numeric',
+                          })}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-8 text-center">
+                <div className="w-12 h-12 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center mb-3">
+                  <TrendingUp className="w-6 h-6 text-[color:var(--muted-foreground)]" />
+                </div>
+                <p className="text-sm font-medium text-[color:var(--foreground)]">No weight logs yet</p>
+                <p className="text-xs text-[color:var(--muted-foreground)] mt-1">
+                  Start tracking your weight to see progress
+                </p>
+              </div>
+            )}
+          </div>
+
           {/* Goals Section */}
           <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 shadow-sm dark:border-zinc-800">
             <div className="flex items-center justify-between mb-4">
@@ -193,7 +314,7 @@ export default function ProfilePage() {
                 </p>
               </div>
               <button
-                onClick={() => setIsModalOpen(true)}
+                onClick={() => setIsGoalModalOpen(true)}
                 className="flex items-center gap-2 px-4 py-2 rounded-lg bg-[color:var(--foreground)] text-[color:var(--background)] text-sm font-medium hover:opacity-90"
               >
                 <Plus className="w-4 h-4" />
@@ -243,13 +364,69 @@ export default function ProfilePage() {
       </section>
 
       {/* Goal Modal */}
-      <Modal isOpen={isModalOpen} onClose={handleCloseModal}>
+      <Modal isOpen={isGoalModalOpen} onClose={handleCloseGoalModal}>
         <GoalForm
           onSubmit={editingGoal ? handleUpdateGoal : handleAddGoal}
-          onCancel={handleCloseModal}
+          onCancel={handleCloseGoalModal}
           initialData={editingGoal || undefined}
-          isLoading={formLoading}
+          isLoading={goalFormLoading}
         />
+      </Modal>
+
+      {/* Weight Modal */}
+      <Modal isOpen={isWeightModalOpen} onClose={() => setIsWeightModalOpen(false)}>
+        <form onSubmit={handleAddWeight} className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xl font-semibold text-[color:var(--foreground)]">Log Weight</h2>
+          </div>
+
+          <div className="space-y-4">
+            <label className="block text-sm font-medium">
+              Weight (kg) *
+              <input
+                type="number"
+                placeholder="70.5"
+                min="0"
+                step="0.1"
+                value={newWeight}
+                onChange={(e) => setNewWeight(e.target.value)}
+                disabled={weightSubmitting}
+                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 dark:focus:border-white disabled:opacity-50"
+                required
+              />
+            </label>
+
+            <label className="block text-sm font-medium">
+              Notes (optional)
+              <textarea
+                placeholder="How are you feeling?"
+                rows={3}
+                value={newNotes}
+                onChange={(e) => setNewNotes(e.target.value)}
+                disabled={weightSubmitting}
+                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 dark:focus:border-white disabled:opacity-50"
+              />
+            </label>
+          </div>
+
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setIsWeightModalOpen(false)}
+              disabled={weightSubmitting}
+              className="flex h-12 flex-1 items-center justify-center rounded-full border border-zinc-200 text-sm font-semibold dark:border-zinc-800 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={weightSubmitting}
+              className="flex h-12 flex-1 items-center justify-center rounded-full bg-[color:var(--foreground)] text-sm font-semibold text-[color:var(--background)] disabled:opacity-50"
+            >
+              {weightSubmitting ? 'Logging...' : 'Log Weight'}
+            </button>
+          </div>
+        </form>
       </Modal>
     </AppLayout>
   );

@@ -9,6 +9,7 @@
     "lint": "eslint"
   },
   "dependencies": {
+    "@mediapipe/tasks-vision": "^0.10.32",
     "clsx": "^2.1.1",
     "firebase": "^10.14.1",
     "lucide-react": "^0.563.0",

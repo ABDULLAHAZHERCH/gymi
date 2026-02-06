@@ -134,28 +134,28 @@ export default function WorkoutForm({
   });
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-[color:var(--foreground)]">
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold text-[color:var(--foreground)]">
           {initialData ? 'Edit Workout' : 'Add Workout'}
         </h2>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-full p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          className="rounded-full p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
-          <X className="h-5 w-5" />
+          <X className="h-4 w-4" />
         </button>
       </div>
 
       {error && (
-        <p className="rounded-lg bg-red-100 p-3 text-sm text-red-700 dark:bg-red-900 dark:text-red-100">
+        <p className="rounded-lg bg-red-100 p-2 text-xs text-red-700 dark:bg-red-900 dark:text-red-100">
           {error}
         </p>
       )}
 
-      <div className="space-y-4">
-        <label className="block text-sm font-medium">
+      <div className="space-y-3">
+        <label className="block text-xs font-medium">
           Exercise Name *
           <input
             type="text"
@@ -164,21 +164,21 @@ export default function WorkoutForm({
             onChange={(e) => handleChange('exercise', e.target.value)}
             onBlur={() => handleBlur('exercise')}
             disabled={isLoading}
-            className={`mt-2 w-full rounded-2xl border ${
+            className={`mt-1 w-full rounded-lg border ${
               fieldErrors.exercise && touched.exercise
                 ? 'border-red-500 dark:border-red-500'
                 : 'border-zinc-200 dark:border-zinc-800'
-            } bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:focus:border-white disabled:opacity-50`}
+            } bg-[color:var(--background)] px-3 py-2 text-sm shadow-sm outline-none focus:border-black dark:focus:border-white disabled:opacity-50`}
           />
           {fieldErrors.exercise && touched.exercise && (
-            <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+            <p className="mt-0.5 text-xs text-red-600 dark:text-red-400">
               {fieldErrors.exercise}
             </p>
           )}
         </label>
 
-        <div className="grid grid-cols-3 gap-4">
-          <label className="block text-sm font-medium">
+        <div className="grid grid-cols-3 gap-2">
+          <label className="block text-xs font-medium">
             Sets *
             <input
               type="number"
@@ -188,20 +188,20 @@ export default function WorkoutForm({
               onChange={(e) => handleChange('sets', e.target.value)}
               onBlur={() => handleBlur('sets')}
               disabled={isLoading}
-              className={`mt-2 w-full rounded-2xl border ${
+              className={`mt-1 w-full rounded-lg border ${
                 fieldErrors.sets && touched.sets
                   ? 'border-red-500 dark:border-red-500'
                   : 'border-zinc-200 dark:border-zinc-800'
-              } bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:focus:border-white disabled:opacity-50`}
+              } bg-[color:var(--background)] px-2 py-2 text-sm shadow-sm outline-none focus:border-black dark:focus:border-white disabled:opacity-50`}
             />
             {fieldErrors.sets && touched.sets && (
-              <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+              <p className="mt-0.5 text-xs text-red-600 dark:text-red-400">
                 {fieldErrors.sets}
               </p>
             )}
           </label>
 
-          <label className="block text-sm font-medium">
+          <label className="block text-xs font-medium">
             Reps *
             <input
               type="number"
@@ -211,20 +211,20 @@ export default function WorkoutForm({
               onChange={(e) => handleChange('reps', e.target.value)}
               onBlur={() => handleBlur('reps')}
               disabled={isLoading}
-              className={`mt-2 w-full rounded-2xl border ${
+              className={`mt-1 w-full rounded-lg border ${
                 fieldErrors.reps && touched.reps
                   ? 'border-red-500 dark:border-red-500'
                   : 'border-zinc-200 dark:border-zinc-800'
-              } bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:focus:border-white disabled:opacity-50`}
+              } bg-[color:var(--background)] px-2 py-2 text-sm shadow-sm outline-none focus:border-black dark:focus:border-white disabled:opacity-50`}
             />
             {fieldErrors.reps && touched.reps && (
-              <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+              <p className="mt-0.5 text-xs text-red-600 dark:text-red-400">
                 {fieldErrors.reps}
               </p>
             )}
           </label>
 
-          <label className="block text-sm font-medium">
+          <label className="block text-xs font-medium">
             Weight (kg)
             <input
               type="number"
@@ -235,82 +235,79 @@ export default function WorkoutForm({
               onChange={(e) => handleChange('weight', e.target.value)}
               onBlur={() => handleBlur('weight')}
               disabled={isLoading}
-              className={`mt-2 w-full rounded-2xl border ${
+              className={`mt-1 w-full rounded-lg border ${
                 fieldErrors.weight && touched.weight
                   ? 'border-red-500 dark:border-red-500'
                   : 'border-zinc-200 dark:border-zinc-800'
-              } bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:focus:border-white disabled:opacity-50`}
+              } bg-[color:var(--background)] px-2 py-2 text-sm shadow-sm outline-none focus:border-black dark:focus:border-white disabled:opacity-50`}
             />
             {fieldErrors.weight && touched.weight && (
-              <p className="mt-1 text-xs text-red-600 dark:text-red-400">
+              <p className="mt-0.5 text-xs text-red-600 dark:text-red-400">
                 {fieldErrors.weight}
               </p>
             )}
           </label>
         </div>
 
-        <label className="block text-sm font-medium">
-          Duration (minutes)
-          <input
-            type="number"
-            placeholder="30"
-            min="0"
-            value={formData.duration}
-            onChange={(e) => handleChange('duration', e.target.value)}
-            onBlur={() => handleBlur('duration')}
-            disabled={isLoading}
-            className={`mt-2 w-full rounded-2xl border ${
-              fieldErrors.duration && touched.duration
-                ? 'border-red-500 dark:border-red-500'
-                : 'border-zinc-200 dark:border-zinc-800'
-            } bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:focus:border-white disabled:opacity-50`}
-          />
-          {fieldErrors.duration && touched.duration && (
-            <p className="mt-1 text-xs text-red-600 dark:text-red-400">
-              {fieldErrors.duration}
-            </p>
-          )}
-        </label>
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-xs font-medium">
+            Duration (min)
+            <input
+              type="number"
+              placeholder="30"
+              min="0"
+              value={formData.duration}
+              onChange={(e) => handleChange('duration', e.target.value)}
+              onBlur={() => handleBlur('duration')}
+              disabled={isLoading}
+              className={`mt-1 w-full rounded-lg border ${
+                fieldErrors.duration && touched.duration
+                  ? 'border-red-500 dark:border-red-500'
+                  : 'border-zinc-200 dark:border-zinc-800'
+              } bg-[color:var(--background)] px-3 py-2 text-sm shadow-sm outline-none focus:border-black dark:focus:border-white disabled:opacity-50`}
+            />
+          </label>
 
-        <label className="block text-sm font-medium">
-          Date & Time *
-          <input
-            type="datetime-local"
-            value={formData.date}
-            onChange={(e) => handleChange('date', e.target.value)}
-            disabled={isLoading}
-            className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 dark:focus:border-white disabled:opacity-50"
-          />
-        </label>
+          <label className="block text-xs font-medium">
+            Date & Time *
+            <input
+              type="datetime-local"
+              value={formData.date}
+              onChange={(e) => handleChange('date', e.target.value)}
+              disabled={isLoading}
+              className="mt-1 w-full rounded-lg border border-zinc-200 bg-[color:var(--background)] px-3 py-2 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 dark:focus:border-white disabled:opacity-50"
+            />
+          </label>
+        </div>
 
-        <label className="block text-sm font-medium">
+        <label className="block text-xs font-medium">
           Notes
           <textarea
-            placeholder="Add any notes about this workout..."
-            rows={3}
+            placeholder="Add any notes..."
+            rows={2}
             value={formData.notes}
             onChange={(e) => handleChange('notes', e.target.value)}
             disabled={isLoading}
-            className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 dark:focus:border-white disabled:opacity-50"
+            className="mt-1 w-full rounded-lg border border-zinc-200 bg-[color:var(--background)] px-3 py-2 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 dark:focus:border-white disabled:opacity-50"
           />
         </label>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-2 pt-2">
         <button
           type="button"
           onClick={onCancel}
           disabled={isLoading}
-          className="flex h-12 flex-1 items-center justify-center rounded-full border border-zinc-200 text-sm font-semibold dark:border-zinc-800 disabled:opacity-50"
+          className="flex h-10 flex-1 items-center justify-center rounded-lg border border-zinc-200 text-sm font-medium dark:border-zinc-800 disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={isLoading}
-          className="flex h-12 flex-1 items-center justify-center rounded-full bg-[color:var(--foreground)] text-sm font-semibold text-[color:var(--background)] disabled:opacity-50"
+          className="flex h-10 flex-1 items-center justify-center rounded-lg bg-[color:var(--foreground)] text-sm font-medium text-[color:var(--background)] disabled:opacity-50"
         >
-          {isLoading ? 'Saving...' : initialData ? 'Update' : 'Add Workout'}
+          {isLoading ? 'Saving...' : initialData ? 'Update' : 'Add'}
         </button>
       </div>
     </form>

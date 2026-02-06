@@ -89,56 +89,58 @@ export default function MealForm({
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold text-[color:var(--foreground)]">
+    <form onSubmit={handleSubmit} className="space-y-3">
+      <div className="flex items-center justify-between mb-3">
+        <h2 className="text-lg font-semibold text-[color:var(--foreground)]">
           {initialData ? 'Edit Meal' : 'Add Meal'}
         </h2>
         <button
           type="button"
           onClick={onCancel}
-          className="rounded-full p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800"
+          className="rounded-full p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800"
         >
-          <X className="h-5 w-5" />
+          <X className="h-4 w-4" />
         </button>
       </div>
 
       {error && (
-        <p className="rounded-lg bg-red-100 p-3 text-sm text-red-700 dark:bg-red-900 dark:text-red-100">
+        <p className="rounded-lg bg-red-100 p-2 text-xs text-red-700 dark:bg-red-900 dark:text-red-100">
           {error}
         </p>
       )}
 
-      <div className="space-y-4">
-        <label className="block text-sm font-medium">
-          Meal Name *
-          <input
-            type="text"
-            placeholder="e.g., Breakfast, Lunch"
-            value={formData.mealName}
-            onChange={(e) => setFormData({ ...formData, mealName: e.target.value })}
-            disabled={isLoading}
-            className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
-          />
-        </label>
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-2">
+          <label className="block text-xs font-medium">
+            Meal Name *
+            <input
+              type="text"
+              placeholder="e.g., Breakfast"
+              value={formData.mealName}
+              onChange={(e) => setFormData({ ...formData, mealName: e.target.value })}
+              disabled={isLoading}
+              className="mt-1 w-full rounded-lg border border-zinc-200 bg-[color:var(--background)] px-3 py-2 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
+            />
+          </label>
 
-        <label className="block text-sm font-medium">
-          Meal Type
-          <select
-            value={formData.mealType}
-            onChange={(e) => setFormData({ ...formData, mealType: e.target.value as 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'other' })}
-            disabled={isLoading}
-            className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
-          >
-            <option value="breakfast">Breakfast</option>
-            <option value="lunch">Lunch</option>
-            <option value="dinner">Dinner</option>
-            <option value="snack">Snack</option>
-            <option value="other">Other</option>
-          </select>
-        </label>
+          <label className="block text-xs font-medium">
+            Meal Type
+            <select
+              value={formData.mealType}
+              onChange={(e) => setFormData({ ...formData, mealType: e.target.value as 'breakfast' | 'lunch' | 'dinner' | 'snack' | 'other' })}
+              disabled={isLoading}
+              className="mt-1 w-full rounded-lg border border-zinc-200 bg-[color:var(--background)] px-3 py-2 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
+            >
+              <option value="breakfast">Breakfast</option>
+              <option value="lunch">Lunch</option>
+              <option value="dinner">Dinner</option>
+              <option value="snack">Snack</option>
+              <option value="other">Other</option>
+            </select>
+          </label>
+        </div>
 
-        <label className="block text-sm font-medium">
+        <label className="block text-xs font-medium">
           Food Items
           <textarea
             placeholder="e.g., Chicken breast, Rice, Broccoli"
@@ -146,11 +148,11 @@ export default function MealForm({
             value={formData.items}
             onChange={(e) => setFormData({ ...formData, items: e.target.value })}
             disabled={isLoading}
-            className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
+            className="mt-1 w-full rounded-lg border border-zinc-200 bg-[color:var(--background)] px-3 py-2 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
           />
         </label>
 
-        <label className="block text-sm font-medium">
+        <label className="block text-xs font-medium">
           Calories *
           <input
             type="number"
@@ -159,12 +161,12 @@ export default function MealForm({
             value={formData.calories}
             onChange={(e) => setFormData({ ...formData, calories: e.target.value })}
             disabled={isLoading}
-            className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
+            className="mt-1 w-full rounded-lg border border-zinc-200 bg-[color:var(--background)] px-3 py-2 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
           />
         </label>
 
-        <div className="grid grid-cols-3 gap-4">
-          <label className="block text-sm font-medium">
+        <div className="grid grid-cols-3 gap-2">
+          <label className="block text-xs font-medium">
             Protein (g)
             <input
               type="number"
@@ -174,11 +176,11 @@ export default function MealForm({
               value={formData.protein}
               onChange={(e) => setFormData({ ...formData, protein: e.target.value })}
               disabled={isLoading}
-              className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
+              className="mt-1 w-full rounded-lg border border-zinc-200 bg-[color:var(--background)] px-2 py-2 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
             />
           </label>
 
-          <label className="block text-sm font-medium">
+          <label className="block text-xs font-medium">
             Carbs (g)
             <input
               type="number"
@@ -188,11 +190,11 @@ export default function MealForm({
               value={formData.carbs}
               onChange={(e) => setFormData({ ...formData, carbs: e.target.value })}
               disabled={isLoading}
-              className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
+              className="mt-1 w-full rounded-lg border border-zinc-200 bg-[color:var(--background)] px-2 py-2 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
             />
           </label>
 
-          <label className="block text-sm font-medium">
+          <label className="block text-xs font-medium">
             Fat (g)
             <input
               type="number"
@@ -202,50 +204,50 @@ export default function MealForm({
               value={formData.fat}
               onChange={(e) => setFormData({ ...formData, fat: e.target.value })}
               disabled={isLoading}
-              className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
+              className="mt-1 w-full rounded-lg border border-zinc-200 bg-[color:var(--background)] px-2 py-2 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
             />
           </label>
         </div>
 
-        <label className="block text-sm font-medium">
+        <label className="block text-xs font-medium">
           Date & Time
           <input
             type="datetime-local"
             value={formData.date}
             onChange={(e) => setFormData({ ...formData, date: e.target.value })}
             disabled={isLoading}
-            className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
+            className="mt-1 w-full rounded-lg border border-zinc-200 bg-[color:var(--background)] px-3 py-2 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
           />
         </label>
 
-        <label className="block text-sm font-medium">
+        <label className="block text-xs font-medium">
           Notes
           <textarea
-            placeholder="Add any notes about this meal..."
+            placeholder="Add any notes..."
             rows={2}
             value={formData.notes}
             onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
             disabled={isLoading}
-            className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
+            className="mt-1 w-full rounded-lg border border-zinc-200 bg-[color:var(--background)] px-3 py-2 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
           />
         </label>
       </div>
 
-      <div className="flex gap-3">
+      <div className="flex gap-2 pt-2">
         <button
           type="button"
           onClick={onCancel}
           disabled={isLoading}
-          className="flex h-12 flex-1 items-center justify-center rounded-full border border-zinc-200 text-sm font-semibold dark:border-zinc-800 disabled:opacity-50"
+          className="flex h-10 flex-1 items-center justify-center rounded-lg border border-zinc-200 text-sm font-medium dark:border-zinc-800 disabled:opacity-50"
         >
           Cancel
         </button>
         <button
           type="submit"
           disabled={isLoading}
-          className="flex h-12 flex-1 items-center justify-center rounded-full bg-[color:var(--foreground)] text-sm font-semibold text-[color:var(--background)] disabled:opacity-50"
+          className="flex h-10 flex-1 items-center justify-center rounded-lg bg-[color:var(--foreground)] text-sm font-medium text-[color:var(--background)] disabled:opacity-50"
         >
-          {isLoading ? 'Saving...' : initialData ? 'Update' : 'Add Meal'}
+          {isLoading ? 'Saving...' : initialData ? 'Update' : 'Add'}
         </button>
       </div>
     </form>

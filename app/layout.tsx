@@ -43,6 +43,11 @@ export default function RootLayout({
               } else {
                 document.documentElement.classList.remove('dark');
               }
+              window.__deferredInstallPrompt = null;
+              window.addEventListener('beforeinstallprompt', function(e) {
+                e.preventDefault();
+                window.__deferredInstallPrompt = e;
+              });
             `,
           }}
         />

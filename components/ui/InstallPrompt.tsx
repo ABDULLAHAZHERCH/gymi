@@ -44,28 +44,28 @@ export function InstallPrompt() {
       return () => clearTimeout(timer);
     }
 
-    // For Chrome/Edge/Samsung etc., capture the beforeinstallprompt
+    // Check if the event was already captured globally (by the inline script
+    // in root layout) before this component mounted — this is the common case
+    // on mobile where the user lands on "/" then navigates to "/home" after login
+    const win = window as any;
+    if (win.__deferredInstallPrompt) {
+      setDeferredPrompt(win.__deferredInstallPrompt as BeforeInstallPromptEvent);
+      win.__deferredInstallPrompt = null;
+      setTimeout(() => setShowBanner(true), 2000);
+      return;
+    }
+
+    // Also listen for future events (in case it hasn't fired yet)
     const handler = (e: Event) => {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
+      // Clear the global reference since we captured it
+      win.__deferredInstallPrompt = null;
       setTimeout(() => setShowBanner(true), 2000);
     };
 
     window.addEventListener('beforeinstallprompt', handler);
-
-    // If the event was already fired before this component mounted,
-    // check again after a short delay (handles race condition)
-    const fallbackTimer = setTimeout(() => {
-      if (!deferredPrompt && !isiOS) {
-        // On Android Chrome: if beforeinstallprompt hasn't fired yet,
-        // it might fire later — keep listening
-      }
-    }, 5000);
-
-    return () => {
-      window.removeEventListener('beforeinstallprompt', handler);
-      clearTimeout(fallbackTimer);
-    };
+    return () => window.removeEventListener('beforeinstallprompt', handler);
   }, []);
 
   const handleInstall = useCallback(async () => {

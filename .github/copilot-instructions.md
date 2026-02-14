@@ -8,18 +8,18 @@
 ### Next.js App Router Structure
 - **Route definitions**: Routes are defined by directory structure under `app/`
 - **Layout system**: `app/layout.tsx` is the root layout; create nested layouts in subdirectories for route-specific layouts
-- **Metadata**: Use `Metadata` type from `next` for page titles and descriptions (see [app/layout.tsx](app/layout.tsx#L1))
+- **Metadata**: Use `Metadata` type from `next` for page titles and descriptions (see [app/layout.tsx])
 - **Dynamic routes**: Create `[param]` directories; use `params` prop in components
 
 ### Styling Approach
 - **Tailwind CSS v4**: Primary styling framework via `@tailwindcss/postcss` plugin
-- **Global styles**: [app/globals.css](app/globals.css) is imported in root layout
-- **Dark mode**: Configured with `dark:` prefix (see usage in [app/page.tsx](app/page.tsx#L5))
-- **Font optimization**: Using `next/font/google` for custom fonts (Geist Sans/Mono in [app/layout.tsx](app/layout.tsx#L5))
+- **Global styles**: [app/globals.css] is imported in root layout
+- **Dark mode**: Configured with `dark:` prefix (see usage in [app/page.tsx])
+- **Font optimization**: Using `next/font/google` for custom fonts (Geist Sans/Mono in [app/layout.tsx])
 
 ### TypeScript Configuration
 - **Strict mode enabled**: All TS features like `noEmit`, `strict`, and `esModuleInterop` are enforced
-- **Path alias**: `@/*` maps to root directory for imports (defined in [tsconfig.json](tsconfig.json#L20))
+- **Path alias**: `@/*` maps to root directory for imports (defined in [tsconfig.json])
 - **Module resolution**: Using `bundler` strategy for proper monorepo and ESM support
 
 ## Development Workflow
@@ -57,7 +57,7 @@
 
 ### File Organization
 - Routes are defined by `app/` directory structure
-- Root layout in [app/layout.tsx](app/layout.tsx) wraps all pages
+- Root layout in [app/layout.tsx] wraps all pages
 - Currently minimal structure; expand with feature directories as needed
 
 ### Dependencies & Versions

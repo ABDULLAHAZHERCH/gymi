@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { X } from 'lucide-react';
 import { Workout } from '@/lib/types/firestore';
+import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { validateField, ValidationErrors } from '@/lib/utils/validation';
 import { useFormShortcuts } from '@/lib/hooks/useKeyboardShortcut';
 
@@ -118,8 +119,8 @@ export default function WorkoutForm({
         notes: formData.notes?.trim() || undefined,
         date: dateObj,
       });
-    } catch (err: any) {
-      setError(err.message || 'Failed to save workout');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to save workout'));
     }
   };
 

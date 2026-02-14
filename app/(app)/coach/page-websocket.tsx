@@ -51,8 +51,8 @@ export default function CoachPage() {
     onConnect: () => {
       showToast('Connected to form analysis', 'success');
     },
-    onError: (error) => {
-      showToast(`Connection error: ${error.message}`, 'error');
+    onError: () => {
+      showToast('Connection error. Please try again.', 'error');
     },
     onDisconnect: () => {
       showToast('Disconnected from form analysis', 'warning');

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Plus } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
+import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { getMeals, addMeal, updateMeal, deleteMeal } from '@/lib/meals';
 import {
   addMealOffline,
@@ -116,7 +117,7 @@ export default function NutritionPage() {
       if (isOnline) showToast('Meal added successfully!', 'success');
     } catch (error: any) {
       console.error('Error adding meal:', error);
-      showToast(error.message || 'Failed to add meal', 'error');
+      showToast(getErrorMessage(error, 'Failed to add meal'), 'error');
     } finally {
       setFormLoading(false);
     }
@@ -149,7 +150,7 @@ export default function NutritionPage() {
       if (isOnline) showToast('Meal updated successfully!', 'success');
     } catch (error: any) {
       console.error('Error updating meal:', error);
-      showToast(error.message || 'Failed to update meal', 'error');
+      showToast(getErrorMessage(error, 'Failed to update meal'), 'error');
     } finally {
       setFormLoading(false);
     }
@@ -175,7 +176,7 @@ export default function NutritionPage() {
       if (isOnline) showToast('Meal deleted successfully!', 'success');
     } catch (error: any) {
       console.error('Error deleting meal:', error);
-      showToast(error.message || 'Failed to delete meal', 'error');
+      showToast(getErrorMessage(error, 'Failed to delete meal'), 'error');
     }
   };
 

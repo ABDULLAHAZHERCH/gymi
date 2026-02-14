@@ -2,7 +2,7 @@
   "name": "GYMI - AI Fitness Coach",
   "short_name": "GYMI",
   "description": "AI-powered fitness tracking with real-time form correction and progress monitoring",
-  "start_url": "/",
+  "start_url": "/home",
   "scope": "/",
   "display": "standalone",
   "orientation": "portrait",
@@ -42,10 +42,10 @@
       "url": "/nutrition"
     },
     {
-      "name": "View Profile",
-      "short_name": "Profile",
-      "description": "View your profile and goals",
-      "url": "/profile"
+      "name": "View Progress",
+      "short_name": "Progress",
+      "description": "View your progress and goals",
+      "url": "/progress"
     }
   ],
   "categories": ["health", "fitness"],

@@ -11,6 +11,7 @@ import {
 import { Workout, Meal } from './types/firestore';
 import { getWorkouts, getWorkoutsByDateRange } from './workouts';
 import { getMeals, getMealsByDate, getDayMacros } from './meals';
+import { getErrorMessage } from './utils/errorMessages';
 
 /**
  * Stats Service Layer
@@ -27,8 +28,8 @@ export async function getWeeklyWorkoutCount(uid: string): Promise<number> {
 
     const workouts = await getWorkoutsByDateRange(uid, weekAgo, now);
     return workouts.length;
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to get weekly workout count');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to get weekly workout count'));
   }
 }
 
@@ -42,8 +43,8 @@ export async function getTodayCalories(uid: string): Promise<number> {
 
     const meals = await getMealsByDate(uid, today);
     return meals.reduce((total, meal) => total + (meal.calories || 0), 0);
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to get today calories');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to get today calories'));
   }
 }
 
@@ -53,8 +54,8 @@ export async function getTodayCalories(uid: string): Promise<number> {
 export async function getTodayMacros(uid: string) {
   try {
     return await getDayMacros(uid, new Date());
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to get today macros');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to get today macros'));
   }
 }
 
@@ -79,8 +80,8 @@ export async function getFavoriteExercises(uid: string, limit: number = 5) {
         exercise,
         count,
       }));
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to get favorite exercises');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to get favorite exercises'));
   }
 }
 
@@ -117,8 +118,8 @@ export async function getRecentEntries(uid: string, count: number = 5) {
       .slice(0, count);
 
     return entries;
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to get recent entries');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to get recent entries'));
   }
 }
 
@@ -181,8 +182,8 @@ export async function getWorkoutStreak(uid: string): Promise<number> {
     }
 
     return streak;
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to get workout streak');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to get workout streak'));
   }
 }
 
@@ -216,8 +217,8 @@ export async function getMonthlyStats(uid: string) {
       weeklyWorkouts: weeklyCount,
       uniqueExercises: new Set(workouts.map((w) => w.exercise)).size,
     };
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to get monthly stats');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to get monthly stats'));
   }
 }
 
@@ -253,7 +254,7 @@ export async function getDashboardStats(uid: string) {
       workoutStreak: streak,
       monthlyStats,
     };
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to get dashboard stats');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to get dashboard stats'));
   }
 }

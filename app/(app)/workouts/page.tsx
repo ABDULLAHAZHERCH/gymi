@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Plus } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
+import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { getWorkouts, addWorkout, updateWorkout, deleteWorkout } from '@/lib/workouts';
 import {
   addWorkoutOffline,
@@ -117,7 +118,7 @@ export default function WorkoutsPage() {
       if (isOnline) showToast('Workout added successfully!', 'success');
     } catch (error: any) {
       console.error('Error adding workout:', error);
-      showToast(error.message || 'Failed to add workout', 'error');
+      showToast(getErrorMessage(error, 'Failed to add workout'), 'error');
     } finally {
       setFormLoading(false);
     }
@@ -150,7 +151,7 @@ export default function WorkoutsPage() {
       if (isOnline) showToast('Workout updated successfully!', 'success');
     } catch (error: any) {
       console.error('Error updating workout:', error);
-      showToast(error.message || 'Failed to update workout', 'error');
+      showToast(getErrorMessage(error, 'Failed to update workout'), 'error');
     } finally {
       setFormLoading(false);
     }
@@ -176,7 +177,7 @@ export default function WorkoutsPage() {
       if (isOnline) showToast('Workout deleted successfully!', 'success');
     } catch (error: any) {
       console.error('Error deleting workout:', error);
-      showToast(error.message || 'Failed to delete workout', 'error');
+      showToast(getErrorMessage(error, 'Failed to delete workout'), 'error');
     }
   };
 

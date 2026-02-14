@@ -4,6 +4,7 @@ import { useState, FormEvent, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { createUserProfile, hasUserProfile } from '@/lib/auth';
+import { getErrorMessage } from '@/lib/utils/errorMessages';
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -26,7 +27,7 @@ export default function OnboardingPage() {
         const profileExists = await hasUserProfile(user.uid);
         if (profileExists) {
           // User already completed onboarding
-          router.push('/');
+          router.push('/home');
         }
       } catch (error) {
         console.error('Error checking profile:', error);
@@ -63,9 +64,9 @@ export default function OnboardingPage() {
         height: parseFloat(formData.height),
       });
 
-      router.push('/');
-    } catch (err: any) {
-      setError(err.message || 'Failed to save profile');
+      router.push('/home');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to save profile'));
     } finally {
       setLoading(false);
     }

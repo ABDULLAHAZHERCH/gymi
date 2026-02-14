@@ -13,6 +13,7 @@ import {
 import { Achievement } from './types/firestore';
 import { getWorkouts } from './workouts';
 import { getMeals } from './meals';
+import { getErrorMessage } from './utils/errorMessages';
 import { getWeightLogs } from './weightLogs';
 
 /**
@@ -223,9 +224,9 @@ export async function unlockAchievement(
     });
 
     return docRef.id;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error unlocking achievement:', error);
-    throw new Error(error.message || 'Failed to unlock achievement');
+    throw new Error(getErrorMessage(error, 'Failed to unlock achievement'));
   }
 }
 
@@ -251,9 +252,9 @@ export async function getAchievements(uid: string): Promise<Achievement[]> {
         createdAt: data.createdAt?.toDate?.() || new Date(),
       };
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching achievements:', error);
-    throw new Error(error.message || 'Failed to fetch achievements');
+    throw new Error(getErrorMessage(error, 'Failed to fetch achievements'));
   }
 }
 

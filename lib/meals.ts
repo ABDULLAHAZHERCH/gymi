@@ -14,6 +14,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { Meal } from './types/firestore';
+import { getErrorMessage } from './utils/errorMessages';
 
 /**
  * Meals Service Layer
@@ -84,8 +85,8 @@ export async function addMeal(
       updatedAt: Timestamp.fromDate(new Date()),
     });
     return docRef.id;
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to add meal');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to add meal'));
   }
 }
 
@@ -105,8 +106,8 @@ export async function getMeals(uid: string, maxLimit = 100): Promise<Meal[]> {
         ...convertTimestamps(data),
       };
     });
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to fetch meals');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to fetch meals'));
   }
 }
 
@@ -127,8 +128,8 @@ export async function getMeal(uid: string, mealId: string): Promise<Meal | null>
       id: snapshot.id,
       ...convertTimestamps(data),
     };
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to fetch meal');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to fetch meal'));
   }
 }
 
@@ -161,8 +162,8 @@ export async function getMealsByDate(uid: string, date: Date): Promise<Meal[]> {
         ...convertTimestamps(data),
       };
     });
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to fetch meals by date');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to fetch meals'));
   }
 }
 
@@ -198,8 +199,8 @@ export async function updateMeal(
     }
 
     await updateDoc(mealRef, updateData);
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to update meal');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to update meal'));
   }
 }
 
@@ -210,8 +211,8 @@ export async function deleteMeal(uid: string, mealId: string): Promise<void> {
   try {
     const mealRef = doc(db, 'users', uid, 'meals', mealId);
     await deleteDoc(mealRef);
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to delete meal');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to delete meal'));
   }
 }
 
@@ -222,8 +223,8 @@ export async function getTodayCalories(uid: string, date: Date = new Date()): Pr
   try {
     const meals = await getMealsByDate(uid, date);
     return meals.reduce((total, meal) => total + (meal.calories || 0), 0);
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to calculate today calories');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to calculate calories'));
   }
 }
 
@@ -239,7 +240,7 @@ export async function getDayMacros(uid: string, date: Date = new Date()) {
       carbs: meals.reduce((total, meal) => total + (meal.carbs || 0), 0),
       fat: meals.reduce((total, meal) => total + (meal.fat || 0), 0),
     };
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to fetch day macros');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to fetch macros'));
   }
 }

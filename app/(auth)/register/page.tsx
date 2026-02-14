@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { registerUser, createUserProfile } from '@/lib/auth';
+import { getErrorMessage } from '@/lib/utils/errorMessages';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -37,8 +38,8 @@ export default function RegisterPage() {
       
       // Redirect to onboarding to complete profile setup
       router.push('/onboarding');
-    } catch (err: any) {
-      setError(err.message || 'Failed to create account');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to create account'));
     } finally {
       setLoading(false);
     }

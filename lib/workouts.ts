@@ -14,6 +14,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { Workout } from './types/firestore';
+import { getErrorMessage } from './utils/errorMessages';
 
 /**
  * Workout Service Layer
@@ -80,8 +81,8 @@ export async function addWorkout(
       updatedAt: Timestamp.fromDate(new Date()),
     });
     return docRef.id;
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to add workout');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to add workout'));
   }
 }
 
@@ -101,8 +102,8 @@ export async function getWorkouts(uid: string, maxLimit = 100): Promise<Workout[
         ...convertTimestamps(data),
       };
     });
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to fetch workouts');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to fetch workouts'));
   }
 }
 
@@ -123,8 +124,8 @@ export async function getWorkout(uid: string, workoutId: string): Promise<Workou
       id: snapshot.id,
       ...convertTimestamps(data),
     };
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to fetch workout');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to fetch workout'));
   }
 }
 
@@ -158,8 +159,8 @@ export async function updateWorkout(
     }
 
     await updateDoc(workoutRef, updateData);
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to update workout');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to update workout'));
   }
 }
 
@@ -170,8 +171,8 @@ export async function deleteWorkout(uid: string, workoutId: string): Promise<voi
   try {
     const workoutRef = doc(db, 'users', uid, 'workouts', workoutId);
     await deleteDoc(workoutRef);
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to delete workout');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to delete workout'));
   }
 }
 
@@ -200,8 +201,8 @@ export async function getWorkoutsByDateRange(
         ...convertTimestamps(data),
       };
     });
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to fetch workouts by date');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to fetch workouts'));
   }
 }
 
@@ -221,7 +222,7 @@ export async function getRecentWorkouts(uid: string, count = 5): Promise<Workout
         ...convertTimestamps(data),
       };
     });
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to fetch recent workouts');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to fetch workouts'));
   }
 }

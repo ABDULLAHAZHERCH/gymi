@@ -1,8 +1,9 @@
 /// <reference lib="webworker" />
 
-const CACHE_NAME = 'gymi-v1';
+const CACHE_NAME = 'gymi-v2';
 const STATIC_ASSETS = [
   '/',
+  '/home',
   '/manifest.json',
   '/offline.html',
 ];

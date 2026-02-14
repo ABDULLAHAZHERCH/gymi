@@ -14,6 +14,7 @@ import {
   Timestamp,
 } from 'firebase/firestore';
 import { WeightLog } from './types/firestore';
+import { getErrorMessage } from './utils/errorMessages';
 
 // Helper to convert Firestore Timestamps to Dates
 const convertTimestamps = (data: any): any => {
@@ -44,9 +45,9 @@ export async function addWeightLog(
     });
 
     return docRef.id;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error adding weight log:', error);
-    throw new Error(error.message || 'Failed to add weight log');
+    throw new Error(getErrorMessage(error, 'Failed to add weight log'));
   }
 }
 
@@ -63,9 +64,9 @@ export async function getWeightLogs(uid: string, limitCount: number = 100): Prom
       ...convertTimestamps(doc.data()),
       id: doc.id,
     })) as WeightLog[];
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching weight logs:', error);
-    throw new Error(error.message || 'Failed to fetch weight logs');
+    throw new Error(getErrorMessage(error, 'Failed to fetch weight logs'));
   }
 }
 
@@ -91,9 +92,9 @@ export async function getWeightLogsByDateRange(
       ...convertTimestamps(doc.data()),
       id: doc.id,
     })) as WeightLog[];
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching weight logs by date range:', error);
-    throw new Error(error.message || 'Failed to fetch weight logs');
+    throw new Error(getErrorMessage(error, 'Failed to fetch weight logs'));
   }
 }
 
@@ -115,9 +116,9 @@ export async function getLatestWeightLog(uid: string): Promise<WeightLog | null>
       ...convertTimestamps(doc.data()),
       id: doc.id,
     } as WeightLog;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching latest weight log:', error);
-    throw new Error(error.message || 'Failed to fetch latest weight');
+    throw new Error(getErrorMessage(error, 'Failed to fetch latest weight'));
   }
 }
 
@@ -141,9 +142,9 @@ export async function updateWeightLog(
     }
 
     await updateDoc(docRef, updateData);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error updating weight log:', error);
-    throw new Error(error.message || 'Failed to update weight log');
+    throw new Error(getErrorMessage(error, 'Failed to update weight log'));
   }
 }
 
@@ -154,9 +155,9 @@ export async function deleteWeightLog(uid: string, logId: string): Promise<void>
   try {
     const docRef = doc(db, 'users', uid, 'weightLogs', logId);
     await deleteDoc(docRef);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error deleting weight log:', error);
-    throw new Error(error.message || 'Failed to delete weight log');
+    throw new Error(getErrorMessage(error, 'Failed to delete weight log'));
   }
 }
 

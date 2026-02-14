@@ -14,6 +14,7 @@ import {
   limit,
 } from 'firebase/firestore';
 import { Goal } from './types/firestore';
+import { getErrorMessage } from './utils/errorMessages';
 
 // Helper to convert Firestore Timestamps to Dates
 const convertTimestamps = (data: any): any => {
@@ -47,9 +48,9 @@ export async function addGoal(
     });
 
     return docRef.id;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error adding goal:', error);
-    throw new Error(error.message || 'Failed to add goal');
+    throw new Error(getErrorMessage(error, 'Failed to add goal'));
   }
 }
 
@@ -77,9 +78,9 @@ export async function getGoals(uid: string, status?: Goal['status']): Promise<Go
 
     // Sort by createdAt in descending order (most recent first)
     return goals.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching goals:', error);
-    throw new Error(error.message || 'Failed to fetch goals');
+    throw new Error(getErrorMessage(error, 'Failed to fetch goals'));
   }
 }
 
@@ -106,9 +107,9 @@ export async function getGoal(uid: string, goalId: string): Promise<Goal | null>
       ...convertTimestamps(docSnap.data()),
       id: docSnap.id,
     } as Goal;
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error fetching goal:', error);
-    throw new Error(error.message || 'Failed to fetch goal');
+    throw new Error(getErrorMessage(error, 'Failed to fetch goal'));
   }
 }
 
@@ -139,9 +140,9 @@ export async function updateGoal(
     }
 
     await updateDoc(docRef, updateData);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error updating goal:', error);
-    throw new Error(error.message || 'Failed to update goal');
+    throw new Error(getErrorMessage(error, 'Failed to update goal'));
   }
 }
 
@@ -152,9 +153,9 @@ export async function deleteGoal(uid: string, goalId: string): Promise<void> {
   try {
     const docRef = doc(db, 'users', uid, 'goals', goalId);
     await deleteDoc(docRef);
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error deleting goal:', error);
-    throw new Error(error.message || 'Failed to delete goal');
+    throw new Error(getErrorMessage(error, 'Failed to delete goal'));
   }
 }
 
@@ -167,9 +168,9 @@ export async function completeGoal(uid: string, goalId: string): Promise<void> {
       status: 'completed',
       completedAt: new Date(),
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Error completing goal:', error);
-    throw new Error(error.message || 'Failed to complete goal');
+    throw new Error(getErrorMessage(error, 'Failed to complete goal'));
   }
 }
 

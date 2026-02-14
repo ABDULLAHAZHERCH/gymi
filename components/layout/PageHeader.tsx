@@ -1,3 +1,7 @@
+'use client';
+
+import UserMenu from './UserMenu';
+
 type PageHeaderProps = {
   title: string;
   subtitle?: string;
@@ -18,6 +22,7 @@ export default function PageHeader({ title, subtitle }: PageHeaderProps) {
             <p className="text-xs text-[color:var(--muted-foreground)]">{subtitle}</p>
           ) : null}
         </div>
+        <UserMenu />
       </div>
     </header>
   );

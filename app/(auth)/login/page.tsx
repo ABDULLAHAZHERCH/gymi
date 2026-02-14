@@ -2,6 +2,7 @@
 
 import { useState, FormEvent } from 'react';
 import { loginUser } from '@/lib/auth';
+import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { useRouter } from 'next/navigation';
 
 export default function LoginPage() {
@@ -27,9 +28,9 @@ export default function LoginPage() {
 
       // Login user via Firebase Auth
       await loginUser(formData.email, formData.password);
-      router.push('/');
-    } catch (err: any) {
-      setError(err.message || 'Failed to log in');
+      router.push('/home');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to log in'));
     } finally {
       setLoading(false);
     }

@@ -75,7 +75,7 @@ export default function CameraView({
         } else if (error.name === 'NotFoundError') {
           setError('No camera found on this device.');
         } else {
-          setError(`Camera error: ${error.message}`);
+          setError('Camera error. Please check permissions and try again.');
         }
         setIsLoading(false);
       }

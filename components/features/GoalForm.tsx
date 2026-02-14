@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { X } from 'lucide-react';
 import { Goal } from '@/lib/types/firestore';
+import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { useFormShortcuts } from '@/lib/hooks/useKeyboardShortcut';
 
 const formatDateToInputString = (date: Date): string => {
@@ -103,8 +104,8 @@ export default function GoalForm({
       }
 
       await onSubmit(goalData);
-    } catch (err: any) {
-      setError(err.message || 'Failed to save goal');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to save goal'));
     }
   };
 

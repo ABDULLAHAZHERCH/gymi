@@ -8,6 +8,7 @@ import {
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { UserProfile } from './types/firestore';
+import { getErrorMessage } from './utils/errorMessages';
 
 /**
  * Auth Service: Handle user authentication
@@ -27,8 +28,8 @@ export async function registerUser(
     await updateProfile(user, { displayName: name });
 
     return user;
-  } catch (error: any) {
-    throw new Error(error.message || 'Registration failed');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Registration failed'));
   }
 }
 
@@ -36,16 +37,16 @@ export async function loginUser(email: string, password: string): Promise<User> 
   try {
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
     return userCredential.user;
-  } catch (error: any) {
-    throw new Error(error.message || 'Login failed');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Login failed'));
   }
 }
 
 export async function logoutUser(): Promise<void> {
   try {
     await signOut(auth);
-  } catch (error: any) {
-    throw new Error(error.message || 'Logout failed');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Logout failed'));
   }
 }
 
@@ -63,8 +64,8 @@ export async function createUserProfile(
       createdAt: new Date(),
       updatedAt: new Date(),
     });
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to create user profile');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to create profile'));
   }
 }
 
@@ -77,8 +78,8 @@ export async function getUserProfile(uid: string): Promise<UserProfile | null> {
       return docSnap.data() as UserProfile;
     }
     return null;
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to fetch user profile');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to load profile'));
   }
 }
 
@@ -92,8 +93,8 @@ export async function updateUserProfile(
       ...updates,
       updatedAt: new Date(),
     });
-  } catch (error: any) {
-    throw new Error(error.message || 'Failed to update user profile');
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to update profile'));
   }
 }
 

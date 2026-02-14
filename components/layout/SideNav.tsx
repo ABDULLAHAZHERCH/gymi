@@ -3,14 +3,14 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { UtensilsCrossed, Dumbbell, Home, User, ChevronLeft, ChevronRight, Activity } from "lucide-react";
+import { UtensilsCrossed, Dumbbell, Home, TrendingUp, ChevronLeft, ChevronRight, Activity } from "lucide-react";
 
 const NAV_ITEMS = [
-  { label: "Home", href: "/", icon: Home },
+  { label: "Home", href: "/home", icon: Home },
   { label: "Workout", href: "/workouts", icon: Activity },
   { label: "Coach", href: "/coach", icon: Dumbbell },
   { label: "Nutrition", href: "/nutrition", icon: UtensilsCrossed },
-  { label: "Profile", href: "/profile", icon: User },
+  { label: "Progress", href: "/progress", icon: TrendingUp },
 ];
 
 const SIDEBAR_STORAGE_KEY = "gymi-sidebar-collapsed";

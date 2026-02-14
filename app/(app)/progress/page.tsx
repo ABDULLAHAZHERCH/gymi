@@ -1,11 +1,10 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
-import { logoutUser } from '@/lib/auth';
+import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { getActiveGoals, addGoal, updateGoal, deleteGoal, completeGoal } from '@/lib/goals';
 import { getWeightLogs, addWeightLog } from '@/lib/weightLogs';
 import { getAchievements } from '@/lib/achievements';
@@ -14,7 +13,6 @@ import { calculateStreaks } from '@/lib/achievements';
 import { getWorkouts } from '@/lib/workouts';
 import { Goal, WeightLog, Achievement } from '@/lib/types/firestore';
 import AppLayout from '@/components/layout/AppLayout';
-import ThemeToggle from '@/components/ui/ThemeToggle';
 import GoalCard from '@/components/features/GoalCard';
 import GoalForm from '@/components/features/GoalForm';
 import StreakIndicator from '@/components/features/StreakIndicator';
@@ -23,10 +21,8 @@ import { WeightChart } from '@/components/features/WeightChart';
 import { Plus, Target, TrendingUp, Award, Lightbulb, ChevronRight } from 'lucide-react';
 
 export default function ProfilePage() {
-  const router = useRouter();
   const { user } = useAuth();
   const { showToast } = useToast();
-  const [loading, setLoading] = useState(false);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [goalsLoading, setGoalsLoading] = useState(true);
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
@@ -86,19 +82,6 @@ export default function ProfilePage() {
     fetchData();
   }, [user, showToast]);
 
-  const handleLogout = async () => {
-    setLoading(true);
-    try {
-      await logoutUser();
-      router.push('/login');
-    } catch (error) {
-      console.error('Logout failed:', error);
-      showToast('Logout failed', 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const handleAddGoal = async (data: Omit<Goal, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (!user) return;
 
@@ -114,9 +97,9 @@ export default function ProfilePage() {
       setGoals([newGoal, ...goals]);
       setIsGoalModalOpen(false);
       showToast('Goal created successfully!', 'success');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error adding goal:', error);
-      showToast(error.message || 'Failed to create goal', 'error');
+      showToast(getErrorMessage(error, 'Failed to create goal'), 'error');
     } finally {
       setGoalFormLoading(false);
     }
@@ -136,9 +119,9 @@ export default function ProfilePage() {
       setIsGoalModalOpen(false);
       setEditingGoal(null);
       showToast('Goal updated successfully!', 'success');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error updating goal:', error);
-      showToast(error.message || 'Failed to update goal', 'error');
+      showToast(getErrorMessage(error, 'Failed to update goal'), 'error');
     } finally {
       setGoalFormLoading(false);
     }
@@ -176,9 +159,9 @@ export default function ProfilePage() {
       setNewWeight('');
       setNewNotes('');
       showToast('Weight logged successfully!', 'success');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error adding weight log:', error);
-      showToast(error.message || 'Failed to log weight', 'error');
+      showToast(getErrorMessage(error, 'Failed to log weight'), 'error');
     } finally {
       setWeightSubmitting(false);
     }
@@ -191,9 +174,9 @@ export default function ProfilePage() {
       await deleteGoal(user.uid, goalId);
       setGoals(goals.filter((g) => g.id !== goalId));
       showToast('Goal deleted successfully!', 'success');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error deleting goal:', error);
-      showToast(error.message || 'Failed to delete goal', 'error');
+      showToast(getErrorMessage(error, 'Failed to delete goal'), 'error');
     }
   };
 
@@ -208,9 +191,9 @@ export default function ProfilePage() {
         )
       );
       showToast('Goal completed! 🎉', 'success');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error completing goal:', error);
-      showToast(error.message || 'Failed to complete goal', 'error');
+      showToast(getErrorMessage(error, 'Failed to complete goal'), 'error');
     }
   };
 
@@ -225,43 +208,18 @@ export default function ProfilePage() {
   };
 
   return (
-    <AppLayout title="Profile">
+    <AppLayout title="Progress">
       <section className="space-y-6">
         <div className="space-y-2">
           <h2 className="text-2xl font-semibold text-[color:var(--foreground)]">
-            {user?.displayName || 'Your Profile'}
+            My Progress
           </h2>
-          <p className="text-sm text-[color:var(--muted-foreground)]">{user?.email}</p>
+          <p className="text-sm text-[color:var(--muted-foreground)]">
+            Track your fitness journey
+          </p>
         </div>
 
         <div className="space-y-4">
-          {/* User Info Card */}
-          <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 shadow-sm dark:border-zinc-800">
-            <p className="text-sm font-semibold text-[color:var(--foreground)]">Account Info</p>
-            <p className="text-xs text-[color:var(--muted-foreground)]">Your account details</p>
-            <div className="mt-3 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-[color:var(--muted-foreground)]">Email:</span>
-                <span className="text-[color:var(--foreground)]">{user?.email}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-[color:var(--muted-foreground)]">Name:</span>
-                <span className="text-[color:var(--foreground)]">{user?.displayName || 'Not set'}</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Appearance Settings */}
-          <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 shadow-sm dark:border-zinc-800">
-            <p className="text-sm font-semibold text-[color:var(--foreground)]">Appearance</p>
-            <p className="text-xs text-[color:var(--muted-foreground)]">
-              Switch between light and dark mode.
-            </p>
-            <div className="mt-3">
-              <ThemeToggle />
-            </div>
-          </div>
-
           {/* Streak & Achievements Preview */}
           <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 shadow-sm dark:border-zinc-800">
             <div className="flex items-center justify-between mb-4">
@@ -446,15 +404,6 @@ export default function ProfilePage() {
               </div>
             )}
           </div>
-
-          {/* Logout Button */}
-          <button
-            onClick={handleLogout}
-            disabled={loading}
-            className="flex h-12 w-full items-center justify-center rounded-full border border-zinc-200 bg-[color:var(--background)] text-sm font-semibold text-red-600 dark:border-zinc-800 disabled:opacity-50"
-          >
-            {loading ? 'Logging out...' : 'Log out'}
-          </button>
         </div>
       </section>
 

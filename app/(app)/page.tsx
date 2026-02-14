@@ -90,7 +90,7 @@ export default function Home() {
           </button>
 
           <button
-            onClick={() => router.push('/profile')}
+            onClick={() => router.push('/progress')}
             className="flex flex-col items-center gap-2 rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 shadow-sm transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900"
           >
             <div className="text-2xl">👤</div>

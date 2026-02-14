@@ -62,7 +62,7 @@ export default function MealTemplateForm({
         notes: formData.notes?.trim() || undefined,
       });
     } catch (err: any) {
-      setError(err.message || 'Failed to save template');
+      setError('Failed to save template');
     }
   };
 

@@ -11,6 +11,7 @@ import {
   orderBy,
   Timestamp,
 } from 'firebase/firestore';
+import { getErrorMessage } from './utils/errorMessages';
 
 export interface MealTemplate {
   name: string;
@@ -43,7 +44,7 @@ export async function addMealTemplate(
     return docRef.id;
   } catch (error: any) {
     console.error('Error adding meal template:', error);
-    throw new Error(error.message || 'Failed to add meal template');
+    throw new Error(getErrorMessage(error, 'Failed to add meal template'));
   }
 }
 
@@ -74,7 +75,7 @@ export async function getMealTemplates(uid: string): Promise<MealTemplate[]> {
     });
   } catch (error: any) {
     console.error('Error fetching meal templates:', error);
-    throw new Error(error.message || 'Failed to fetch meal templates');
+    throw new Error(getErrorMessage(error, 'Failed to fetch meal templates'));
   }
 }
 
@@ -117,7 +118,7 @@ export async function getMealTemplate(uid: string, templateId: string): Promise<
     };
   } catch (error: any) {
     console.error('Error fetching meal template:', error);
-    throw new Error(error.message || 'Failed to fetch meal template');
+    throw new Error(getErrorMessage(error, 'Failed to fetch meal template'));
   }
 }
 
@@ -137,7 +138,7 @@ export async function updateMealTemplate(
     });
   } catch (error: any) {
     console.error('Error updating meal template:', error);
-    throw new Error(error.message || 'Failed to update meal template');
+    throw new Error(getErrorMessage(error, 'Failed to update meal template'));
   }
 }
 
@@ -150,7 +151,7 @@ export async function deleteMealTemplate(uid: string, templateId: string): Promi
     await deleteDoc(templateRef);
   } catch (error: any) {
     console.error('Error deleting meal template:', error);
-    throw new Error(error.message || 'Failed to delete meal template');
+    throw new Error(getErrorMessage(error, 'Failed to delete meal template'));
   }
 }
 

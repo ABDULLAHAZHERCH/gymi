@@ -3,6 +3,7 @@
 import { useState, FormEvent } from 'react';
 import { X } from 'lucide-react';
 import { Meal } from '@/lib/types/firestore';
+import { getErrorMessage } from '@/lib/utils/errorMessages';
 
 // Helper to format Date to datetime-local string in user's local timezone
 const formatDateToLocalString = (date: Date): string => {
@@ -83,8 +84,8 @@ export default function MealForm({
         notes: formData.notes?.trim() || undefined,
         date: dateObj,
       });
-    } catch (err: any) {
-      setError(err.message || 'Failed to save meal');
+    } catch (err) {
+      setError(getErrorMessage(err, 'Failed to save meal'));
     }
   };
 

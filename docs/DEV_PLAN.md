@@ -668,39 +668,48 @@ NEW:
   - Splash screen
 
 **Backend:**
-- [ ] Create `lib/offline/offlineStore.ts`
+- [x] Create `lib/offline/offlineStore.ts` ✅
   - IndexedDB wrapper for local storage
   - Schemas for workouts, meals, goals, weights
   - CRUD operations for offline data
+  - Sync queue implementation
   
-- [ ] Create `lib/offline/syncQueue.ts`
-  - Queue management for pending operations
-  - Sync execution when online
-  - Retry logic for failed syncs
-  - Conflict resolution
+- [x] Create `public/sw.js` ✅
+  - Service worker with 3-tier caching strategy
+  - Static asset caching (cache-first)
+  - API response caching (network-first)
+  - Background sync preparation
 
-- [ ] Create `lib/offline/serviceWorker.ts`
-  - Static asset caching
-  - API response caching
-  - Background sync registration
+- [x] Create `lib/hooks/useOffline.ts` ✅
+  - Service Worker registration
+  - Online/offline event listeners
+  - Update detection (60-second checks)
+  - Update triggering (SKIP_WAITING)
 
 **UI Components:**
-- [ ] Offline Indicator in header
-- [ ] Sync Status Toast
-- [ ] Queue Status in Settings page
-- [ ] Manual Sync button
+- [x] OfflineIndicator in AppLayout ✅
+  - Shows offline status with amber color
+  - Shows update available with blue color
+  - Fixed positioning (bottom-left mobile, bottom-right desktop)
 
-**Implementation Steps:**
-1. Install service worker dependencies (`workbox` or `serwist`)
-2. Create service worker file
-3. Register in app layout
-4. Create offline store utilities
-5. Create sync queue utilities
-6. Wire up offline detection (online/offline events)
-7. Build offline UI components
-8. Test offline add/edit/delete flows
-9. Create web manifest
-10. Test PWA installation
+**Implementation Steps (Week 1 - COMPLETE ✅):**
+1. ✅ Install PWA dependencies (workbox, idb)
+2. ✅ Create `public/manifest.json` with full PWA config
+3. ✅ Create `public/sw.js` service worker with caching strategies
+4. ✅ Create `lib/offline/offlineStore.ts` with IndexedDB CRUD
+5. ✅ Create `lib/hooks/useOffline.ts` for SW lifecycle
+6. ✅ Create `components/ui/OfflineIndicator.tsx` UI component
+7. ✅ Link manifest in `app/layout.tsx` head
+8. ✅ Import OfflineIndicator in AppLayout
+9. ✅ Create `public/offline.html` fallback page
+
+**Remaining Implementation (Week 2+):**
+- [ ] Test offline functionality in DevTools
+- [ ] Create sync queue execution logic
+- [ ] Handle sync conflicts (local vs server)
+- [ ] Integrate offline CRUD into workouts/nutrition pages
+- [ ] Test PWA installation on mobile
+- [ ] Create sync status dashboard
 
 **Testing:**
 - [ ] Works offline (Network → Offline in DevTools)

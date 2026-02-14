@@ -3,6 +3,7 @@ import BottomNav from "@/components/layout/BottomNav";
 import PageHeader from "@/components/layout/PageHeader";
 import SideNav from "@/components/layout/SideNav";
 import PageTransition from "@/components/providers/PageTransition";
+import { OfflineIndicator } from "@/components/ui/OfflineIndicator";
 
 type AppLayoutProps = {
   title?: string;
@@ -24,6 +25,7 @@ export default function AppLayout({ title, children }: AppLayoutProps) {
         </div>
       </div>
       <BottomNav />
+      <OfflineIndicator />
     </div>
   );
 }

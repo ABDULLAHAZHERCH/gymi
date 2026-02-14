@@ -12,14 +12,18 @@
 - **Progress Monitoring** — Weight tracking with visual charts and goal management
 - **Dark Mode** — Built-in theme switching for comfortable viewing
 
-## 🚀 Quick Start
+## 🌐 Live Demo
+
+**Visit:** [https://gymii.vercel.app](https://gymii.vercel.app) 🎉
+
+## 🚀 Quick Start (Local)
 
 ```bash
 npm install
 npm run dev
 ```
 
-Visit [localhost:3000](http://localhost:3000) and sign up to start tracking.
+Visit [localhost:3000](http://localhost:3000) for local development, or check out the [live demo](https://gymii.vercel.app).
 
 ## 🛠️ Built With
 
@@ -79,4 +83,6 @@ Built as a Final Year Project (FYP) — 2025/2026
 
 ---
 
+**Live Demo:** [https://gymii.vercel.app](https://gymii.vercel.app)  
+**Repository:** [GitHub](https://github.com/ABDULLAHAZHERCH/gymi)  
 **Version:** 0.1.0 • **Framework:** Next.js 16 • **License:** Private

@@ -80,11 +80,11 @@ export default function GoalForm({
       const goalData: Omit<Goal, 'id' | 'createdAt' | 'updatedAt'> = {
         type: formData.type,
         title: formData.title.trim(),
-        description: formData.description?.trim() || undefined,
+        description: formData.description?.trim() || '',
         startDate: new Date(formData.startDate),
         targetDate: new Date(formData.targetDate),
         status: formData.status,
-        currentValue: formData.currentValue ? parseFloat(formData.currentValue) : undefined,
+        currentValue: formData.currentValue ? parseFloat(formData.currentValue) : 0,
       };
 
       // Add type-specific fields

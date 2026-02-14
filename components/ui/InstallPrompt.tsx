@@ -52,7 +52,20 @@ export function InstallPrompt() {
     };
 
     window.addEventListener('beforeinstallprompt', handler);
-    return () => window.removeEventListener('beforeinstallprompt', handler);
+
+    // If the event was already fired before this component mounted,
+    // check again after a short delay (handles race condition)
+    const fallbackTimer = setTimeout(() => {
+      if (!deferredPrompt && !isiOS) {
+        // On Android Chrome: if beforeinstallprompt hasn't fired yet,
+        // it might fire later — keep listening
+      }
+    }, 5000);
+
+    return () => {
+      window.removeEventListener('beforeinstallprompt', handler);
+      clearTimeout(fallbackTimer);
+    };
   }, []);
 
   const handleInstall = useCallback(async () => {

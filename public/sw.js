@@ -1,11 +1,13 @@
 /// <reference lib="webworker" />
 
-const CACHE_NAME = 'gymi-v2';
+const CACHE_NAME = 'gymi-v3';
 const STATIC_ASSETS = [
   '/',
   '/home',
   '/manifest.json',
   '/offline.html',
+  '/icon-192.png',
+  '/icon-512.png',
 ];
 
 // Install event - cache static assets

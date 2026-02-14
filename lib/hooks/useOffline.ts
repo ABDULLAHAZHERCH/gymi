@@ -39,8 +39,8 @@ export function useOffline() {
       setPendingCount(status.pending);
 
       return result;
-    } catch (error) {
-      console.error('[useOffline] Sync failed:', error);
+    } catch {
+      // Silently handle sync failure
     } finally {
       setIsSyncing(false);
     }
@@ -59,47 +59,61 @@ export function useOffline() {
     }
   }, []);
 
-  // Register service worker
+  // Register service worker (only once globally)
   useEffect(() => {
     // Initialize offline store
-    initOfflineStore().catch((err) => {
-      console.error('Failed to init offline store:', err);
+    initOfflineStore().catch(() => {
+      // Silently handle offline store init failure
     });
 
-    // Only register in production (browser environment)
-    if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
-      navigator.serviceWorker
-        .register('/sw.js')
-        .then((registration) => {
-          console.log('[useOffline] Service Worker registered:', registration);
-          swRef.current = registration;
+    if (typeof window === 'undefined' || !('serviceWorker' in navigator)) return;
+
+    // Use a global flag to prevent multiple registrations
+    const win = window as any;
+    if (win.__gymiSwRegistered) {
+      // Already registered by another hook instance — just grab the existing registration
+      navigator.serviceWorker.getRegistration('/sw.js').then((reg) => {
+        if (reg) {
+          swRef.current = reg;
           setSwReady(true);
-
-          // Check for updates periodically
-          const interval = setInterval(() => {
-            registration.update().catch((err) => {
-              console.error('Failed to update SW:', err);
-            });
-          }, 60000); // Every minute
-
-          // Listen for waiting service worker
-          registration.addEventListener('updatefound', () => {
-            const newWorker = registration.installing;
-            if (newWorker) {
-              newWorker.addEventListener('statechange', () => {
-                if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
-                  setSwWaitingReady(true);
-                }
-              });
-            }
-          });
-
-          return () => clearInterval(interval);
-        })
-        .catch((err) => {
-          console.error('[useOffline] Service Worker registration failed:', err);
-        });
+        }
+      });
+      return;
     }
+    win.__gymiSwRegistered = true;
+
+    let updateInterval: ReturnType<typeof setInterval>;
+
+    navigator.serviceWorker
+      .register('/sw.js')
+      .then((registration) => {
+        swRef.current = registration;
+        setSwReady(true);
+
+        // Check for updates every 5 minutes
+        updateInterval = setInterval(() => {
+          registration.update().catch(() => {});
+        }, 300000);
+
+        // Listen for waiting service worker
+        registration.addEventListener('updatefound', () => {
+          const newWorker = registration.installing;
+          if (newWorker) {
+            newWorker.addEventListener('statechange', () => {
+              if (newWorker.state === 'installed' && navigator.serviceWorker.controller) {
+                setSwWaitingReady(true);
+              }
+            });
+          }
+        });
+      })
+      .catch(() => {
+        // Silently handle SW registration failure
+      });
+
+    return () => {
+      if (updateInterval) clearInterval(updateInterval);
+    };
   }, []);
 
   // Monitor online/offline state and trigger sync
@@ -107,20 +121,15 @@ export function useOffline() {
     setIsOnline(navigator.onLine);
 
     const handleOnline = () => {
-      console.log('[useOffline] Online');
       setIsOnline(true);
-      // Trigger sync when coming online
       window.dispatchEvent(new Event('offline-sync'));
     };
 
     const handleOffline = () => {
-      console.log('[useOffline] Offline');
       setIsOnline(false);
     };
 
-    // Listen for the offline-sync event to actually process the queue
     const handleSync = () => {
-      console.log('[useOffline] Sync event received');
       triggerSync();
     };
 

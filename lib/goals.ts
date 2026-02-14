@@ -38,8 +38,14 @@ export async function addGoal(
     const goalsRef = collection(db, 'users', uid, 'goals');
     const now = Timestamp.now();
 
+    // Strip undefined values — Firestore rejects them
+    const cleaned: Record<string, any> = {};
+    for (const [key, value] of Object.entries(data)) {
+      if (value !== undefined) cleaned[key] = value;
+    }
+
     const docRef = await addDoc(goalsRef, {
-      ...data,
+      ...cleaned,
       startDate: Timestamp.fromDate(data.startDate),
       targetDate: Timestamp.fromDate(data.targetDate),
       completedAt: data.completedAt ? Timestamp.fromDate(data.completedAt) : null,

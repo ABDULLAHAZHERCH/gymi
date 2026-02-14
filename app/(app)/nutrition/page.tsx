@@ -5,6 +5,14 @@ import { Plus } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
 import { getMeals, addMeal, updateMeal, deleteMeal } from '@/lib/meals';
+import {
+  addMealOffline,
+  getMealsOffline,
+  updateMealOffline,
+  deleteMealOffline,
+  addToSyncQueue,
+} from '@/lib/offline/offlineStore';
+import { useOffline } from '@/lib/hooks/useOffline';
 import { Meal } from '@/lib/types/firestore';
 import AppLayout from '@/components/layout/AppLayout';
 import MealList from '@/components/features/MealList';
@@ -17,6 +25,7 @@ import { searchAndFilterMeals } from '@/lib/utils/search';
 export default function NutritionPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { isOnline, setUid } = useOffline();
 
   const [meals, setMeals] = useState<Meal[]>([]);
   const [mealLoading, setMealLoading] = useState(true);
@@ -28,23 +37,46 @@ export default function NutritionPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<FilterOptions>({});
 
-  // Fetch meals on mount
+  // Set UID for sync manager
+  useEffect(() => {
+    if (user) setUid(user.uid);
+  }, [user, setUid]);
+
+  // Fetch meals on mount — online from Firebase, offline from IndexedDB
   useEffect(() => {
     if (!user) return;
 
     const fetchMeals = async () => {
       try {
-        const data = await getMeals(user.uid);
-        setMeals(data);
+        if (isOnline) {
+          const data = await getMeals(user.uid);
+          setMeals(data);
+        } else {
+          const offlineData = await getMealsOffline(user.uid);
+          setMeals(offlineData);
+          if (offlineData.length > 0) {
+            showToast('Showing offline data', 'info');
+          }
+        }
       } catch (error) {
         console.error('Error fetching meals:', error);
+        // Fallback to offline data on network errors
+        try {
+          const offlineData = await getMealsOffline(user.uid);
+          setMeals(offlineData);
+          if (offlineData.length > 0) {
+            showToast('Network error — showing cached data', 'warning');
+          }
+        } catch {
+          // IndexedDB also failed
+        }
       } finally {
         setMealLoading(false);
       }
     };
 
     fetchMeals();
-  }, [user]);
+  }, [user, isOnline, showToast]);
 
   // Filter and search meals
   const filteredMeals = useMemo(() => {
@@ -63,7 +95,16 @@ export default function NutritionPage() {
 
     setFormLoading(true);
     try {
-      const id = await addMeal(user.uid, data);
+      let id: string;
+
+      if (isOnline) {
+        id = await addMeal(user.uid, data);
+      } else {
+        id = await addMealOffline(user.uid, data);
+        await addToSyncQueue(user.uid, 'create', 'meals', id, { ...data, id });
+        showToast('Saved offline — will sync when online', 'info');
+      }
+
       const newMeal: Meal = {
         ...data,
         id,
@@ -72,7 +113,7 @@ export default function NutritionPage() {
       };
       setMeals([newMeal, ...meals]);
       setIsModalOpen(false);
-      showToast('Meal added successfully!', 'success');
+      if (isOnline) showToast('Meal added successfully!', 'success');
     } catch (error: any) {
       console.error('Error adding meal:', error);
       showToast(error.message || 'Failed to add meal', 'error');
@@ -88,7 +129,14 @@ export default function NutritionPage() {
 
     setFormLoading(true);
     try {
-      await updateMeal(user.uid, editingMeal.id, data);
+      if (isOnline) {
+        await updateMeal(user.uid, editingMeal.id, data);
+      } else {
+        await updateMealOffline(user.uid, editingMeal.id, data);
+        await addToSyncQueue(user.uid, 'update', 'meals', editingMeal.id, data);
+        showToast('Updated offline — will sync when online', 'info');
+      }
+
       setMeals(
         meals.map((m) =>
           m.id === editingMeal.id
@@ -98,7 +146,7 @@ export default function NutritionPage() {
       );
       setIsModalOpen(false);
       setEditingMeal(null);
-      showToast('Meal updated successfully!', 'success');
+      if (isOnline) showToast('Meal updated successfully!', 'success');
     } catch (error: any) {
       console.error('Error updating meal:', error);
       showToast(error.message || 'Failed to update meal', 'error');
@@ -115,9 +163,16 @@ export default function NutritionPage() {
     }
 
     try {
-      await deleteMeal(user.uid, mealId);
+      if (isOnline) {
+        await deleteMeal(user.uid, mealId);
+      } else {
+        await deleteMealOffline(user.uid, mealId);
+        await addToSyncQueue(user.uid, 'delete', 'meals', mealId, null);
+        showToast('Deleted offline — will sync when online', 'info');
+      }
+
       setMeals(meals.filter((m) => m.id !== mealId));
-      showToast('Meal deleted successfully!', 'success');
+      if (isOnline) showToast('Meal deleted successfully!', 'success');
     } catch (error: any) {
       console.error('Error deleting meal:', error);
       showToast(error.message || 'Failed to delete meal', 'error');

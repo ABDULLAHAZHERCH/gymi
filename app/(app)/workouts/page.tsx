@@ -5,6 +5,14 @@ import { Plus } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
 import { getWorkouts, addWorkout, updateWorkout, deleteWorkout } from '@/lib/workouts';
+import {
+  addWorkoutOffline,
+  getWorkoutsOffline,
+  updateWorkoutOffline,
+  deleteWorkoutOffline,
+  addToSyncQueue,
+} from '@/lib/offline/offlineStore';
+import { useOffline } from '@/lib/hooks/useOffline';
 import { Workout } from '@/lib/types/firestore';
 import AppLayout from '@/components/layout/AppLayout';
 import WorkoutList from '@/components/features/WorkoutList';
@@ -17,6 +25,7 @@ import { searchAndFilterWorkouts } from '@/lib/utils/search';
 export default function WorkoutsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
+  const { isOnline, setUid } = useOffline();
 
   const [workouts, setWorkouts] = useState<Workout[]>([]);
   const [workoutLoading, setWorkoutLoading] = useState(true);
@@ -28,23 +37,46 @@ export default function WorkoutsPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<FilterOptions>({});
 
-  // Fetch workouts on mount
+  // Set UID for sync manager
+  useEffect(() => {
+    if (user) setUid(user.uid);
+  }, [user, setUid]);
+
+  // Fetch workouts on mount — online from Firebase, offline from IndexedDB
   useEffect(() => {
     if (!user) return;
 
     const fetchWorkouts = async () => {
       try {
-        const data = await getWorkouts(user.uid);
-        setWorkouts(data);
+        if (isOnline) {
+          const data = await getWorkouts(user.uid);
+          setWorkouts(data);
+        } else {
+          const offlineData = await getWorkoutsOffline(user.uid);
+          setWorkouts(offlineData);
+          if (offlineData.length > 0) {
+            showToast('Showing offline data', 'info');
+          }
+        }
       } catch (error) {
         console.error('Error fetching workouts:', error);
+        // Fallback to offline data on network errors
+        try {
+          const offlineData = await getWorkoutsOffline(user.uid);
+          setWorkouts(offlineData);
+          if (offlineData.length > 0) {
+            showToast('Network error — showing cached data', 'warning');
+          }
+        } catch {
+          // IndexedDB also failed
+        }
       } finally {
         setWorkoutLoading(false);
       }
     };
 
     fetchWorkouts();
-  }, [user]);
+  }, [user, isOnline, showToast]);
 
   // Filter and search workouts
   const filteredWorkouts = useMemo(() => {
@@ -63,7 +95,17 @@ export default function WorkoutsPage() {
 
     setFormLoading(true);
     try {
-      const id = await addWorkout(user.uid, data);
+      let id: string;
+
+      if (isOnline) {
+        id = await addWorkout(user.uid, data);
+      } else {
+        // Save locally and queue for sync
+        id = await addWorkoutOffline(user.uid, data);
+        await addToSyncQueue(user.uid, 'create', 'workouts', id, { ...data, id });
+        showToast('Saved offline — will sync when online', 'info');
+      }
+
       const newWorkout: Workout = {
         ...data,
         id,
@@ -72,7 +114,7 @@ export default function WorkoutsPage() {
       };
       setWorkouts([newWorkout, ...workouts]);
       setIsModalOpen(false);
-      showToast('Workout added successfully!', 'success');
+      if (isOnline) showToast('Workout added successfully!', 'success');
     } catch (error: any) {
       console.error('Error adding workout:', error);
       showToast(error.message || 'Failed to add workout', 'error');
@@ -88,7 +130,14 @@ export default function WorkoutsPage() {
 
     setFormLoading(true);
     try {
-      await updateWorkout(user.uid, editingWorkout.id, data);
+      if (isOnline) {
+        await updateWorkout(user.uid, editingWorkout.id, data);
+      } else {
+        await updateWorkoutOffline(user.uid, editingWorkout.id, data);
+        await addToSyncQueue(user.uid, 'update', 'workouts', editingWorkout.id, data);
+        showToast('Updated offline — will sync when online', 'info');
+      }
+
       setWorkouts(
         workouts.map((w) =>
           w.id === editingWorkout.id
@@ -98,7 +147,7 @@ export default function WorkoutsPage() {
       );
       setIsModalOpen(false);
       setEditingWorkout(null);
-      showToast('Workout updated successfully!', 'success');
+      if (isOnline) showToast('Workout updated successfully!', 'success');
     } catch (error: any) {
       console.error('Error updating workout:', error);
       showToast(error.message || 'Failed to update workout', 'error');
@@ -115,9 +164,16 @@ export default function WorkoutsPage() {
     }
 
     try {
-      await deleteWorkout(user.uid, workoutId);
+      if (isOnline) {
+        await deleteWorkout(user.uid, workoutId);
+      } else {
+        await deleteWorkoutOffline(user.uid, workoutId);
+        await addToSyncQueue(user.uid, 'delete', 'workouts', workoutId, null);
+        showToast('Deleted offline — will sync when online', 'info');
+      }
+
       setWorkouts(workouts.filter((w) => w.id !== workoutId));
-      showToast('Workout deleted successfully!', 'success');
+      if (isOnline) showToast('Workout deleted successfully!', 'success');
     } catch (error: any) {
       console.error('Error deleting workout:', error);
       showToast(error.message || 'Failed to delete workout', 'error');

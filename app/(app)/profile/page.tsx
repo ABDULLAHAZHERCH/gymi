@@ -2,19 +2,25 @@
 
 import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
 import { logoutUser } from '@/lib/auth';
 import { getActiveGoals, addGoal, updateGoal, deleteGoal, completeGoal } from '@/lib/goals';
 import { getWeightLogs, addWeightLog } from '@/lib/weightLogs';
-import { Goal, WeightLog } from '@/lib/types/firestore';
+import { getAchievements } from '@/lib/achievements';
+import { getInsights, type Insight } from '@/lib/reports';
+import { calculateStreaks } from '@/lib/achievements';
+import { getWorkouts } from '@/lib/workouts';
+import { Goal, WeightLog, Achievement } from '@/lib/types/firestore';
 import AppLayout from '@/components/layout/AppLayout';
 import ThemeToggle from '@/components/ui/ThemeToggle';
 import GoalCard from '@/components/features/GoalCard';
 import GoalForm from '@/components/features/GoalForm';
+import StreakIndicator from '@/components/features/StreakIndicator';
 import Modal from '@/components/ui/Modal';
 import { WeightChart } from '@/components/features/WeightChart';
-import { Plus, Target, TrendingUp } from 'lucide-react';
+import { Plus, Target, TrendingUp, Award, Lightbulb, ChevronRight } from 'lucide-react';
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -35,20 +41,40 @@ export default function ProfilePage() {
   const [weightSubmitting, setWeightSubmitting] = useState(false);
   const [activeGoal, setActiveGoal] = useState<Goal | null>(null);
 
-  // Fetch active goals and weight logs
+  // Achievements & Insights states
+  const [achievements, setAchievements] = useState<Achievement[]>([]);
+  const [insights, setInsights] = useState<Insight[]>([]);
+  const [streakInfo, setStreakInfo] = useState({ current: 0, longest: 0, total: 0 });
+
+  // Fetch active goals, weight logs, achievements, insights
   useEffect(() => {
     if (!user) return;
 
     const fetchData = async () => {
       try {
-        const [goalsData, weightsData] = await Promise.all([
+        const [goalsData, weightsData, achievementsData, insightsData, workoutsData] = await Promise.all([
           getActiveGoals(user.uid),
           getWeightLogs(user.uid, 30),
+          getAchievements(user.uid).catch(() => []),
+          getInsights(user.uid).catch(() => []),
+          getWorkouts(user.uid, 500).catch(() => []),
         ]);
         setGoals(goalsData);
         setWeightLogs(weightsData);
+        setAchievements(achievementsData);
+        setInsights(insightsData);
+
         const weightGoal = goalsData.find(g => g.type === 'weight');
         setActiveGoal(weightGoal || null);
+
+        // Calculate streaks
+        const workoutDates = workoutsData.map((w) => w.date);
+        const streaks = calculateStreaks(workoutDates);
+        setStreakInfo({
+          current: streaks.currentStreak,
+          longest: streaks.longestStreak,
+          total: workoutsData.length,
+        });
       } catch (error) {
         console.error('Error fetching data:', error);
         showToast('Failed to load data', 'error');
@@ -235,6 +261,75 @@ export default function ProfilePage() {
               <ThemeToggle />
             </div>
           </div>
+
+          {/* Streak & Achievements Preview */}
+          <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 shadow-sm dark:border-zinc-800">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <p className="text-sm font-semibold text-[color:var(--foreground)] flex items-center gap-2">
+                  <Award className="w-4 h-4" />
+                  Achievements
+                </p>
+                <p className="text-xs text-[color:var(--muted-foreground)]">
+                  {achievements.length} badge{achievements.length !== 1 ? 's' : ''} earned
+                </p>
+              </div>
+              <Link
+                href="/achievements"
+                className="flex items-center gap-1 text-xs font-medium text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] transition-colors"
+              >
+                View All
+                <ChevronRight className="w-3 h-3" />
+              </Link>
+            </div>
+
+            <StreakIndicator
+              currentStreak={streakInfo.current}
+              longestStreak={streakInfo.longest}
+              totalWorkouts={streakInfo.total}
+            />
+
+            {/* Recent achievements */}
+            {achievements.length > 0 && (
+              <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
+                <div className="flex flex-wrap gap-2">
+                  {achievements.slice(0, 5).map((a) => (
+                    <span
+                      key={a.id}
+                      title={a.title}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-xs"
+                    >
+                      <span>{a.icon}</span>
+                      <span className="text-[color:var(--foreground)] font-medium">{a.title}</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Smart Insights */}
+          {insights.length > 0 && (
+            <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 shadow-sm dark:border-zinc-800">
+              <p className="text-sm font-semibold text-[color:var(--foreground)] flex items-center gap-2 mb-3">
+                <Lightbulb className="w-4 h-4" />
+                Insights
+              </p>
+              <div className="space-y-2">
+                {insights.slice(0, 4).map((insight) => (
+                  <div
+                    key={insight.id}
+                    className="flex items-start gap-2 p-2 rounded-lg bg-zinc-50 dark:bg-zinc-900"
+                  >
+                    <span className="text-lg shrink-0">{insight.icon}</span>
+                    <p className="text-xs text-[color:var(--foreground)] leading-relaxed">
+                      {insight.message}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Weight Tracker Section */}
           <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 shadow-sm dark:border-zinc-800">

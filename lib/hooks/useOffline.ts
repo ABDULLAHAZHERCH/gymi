@@ -1,5 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { initOfflineStore } from '@/lib/offline/offlineStore';
+import { processSyncQueue, getSyncStatus, isSyncInProgress } from '@/lib/offline/syncManager';
+import type { SyncResult } from '@/lib/offline/syncManager';
 
 /**
  * Hook to manage offline state and service worker registration
@@ -8,7 +10,54 @@ export function useOffline() {
   const [isOnline, setIsOnline] = useState(true);
   const [swReady, setSwReady] = useState(false);
   const [swWaitingReady, setSwWaitingReady] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
+  const [lastSyncResult, setLastSyncResult] = useState<SyncResult | null>(null);
   const swRef = useRef<ServiceWorkerRegistration | null>(null);
+  const uidRef = useRef<string | null>(null);
+
+  /**
+   * Set the current user ID for sync operations
+   */
+  const setUid = useCallback((uid: string | null) => {
+    uidRef.current = uid;
+  }, []);
+
+  /**
+   * Trigger sync manually
+   */
+  const triggerSync = useCallback(async () => {
+    if (!uidRef.current || isSyncInProgress()) return;
+
+    setIsSyncing(true);
+    try {
+      const result = await processSyncQueue(uidRef.current);
+      setLastSyncResult(result);
+
+      // Refresh pending count
+      const status = await getSyncStatus(uidRef.current);
+      setPendingCount(status.pending);
+
+      return result;
+    } catch (error) {
+      console.error('[useOffline] Sync failed:', error);
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
+  /**
+   * Refresh the pending sync count
+   */
+  const refreshPendingCount = useCallback(async () => {
+    if (!uidRef.current) return;
+    try {
+      const status = await getSyncStatus(uidRef.current);
+      setPendingCount(status.pending);
+    } catch {
+      // Silently ignore
+    }
+  }, []);
 
   // Register service worker
   useEffect(() => {
@@ -53,7 +102,7 @@ export function useOffline() {
     }
   }, []);
 
-  // Monitor online/offline state
+  // Monitor online/offline state and trigger sync
   useEffect(() => {
     setIsOnline(navigator.onLine);
 
@@ -69,14 +118,22 @@ export function useOffline() {
       setIsOnline(false);
     };
 
+    // Listen for the offline-sync event to actually process the queue
+    const handleSync = () => {
+      console.log('[useOffline] Sync event received');
+      triggerSync();
+    };
+
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    window.addEventListener('offline-sync', handleSync);
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('offline-sync', handleSync);
     };
-  }, []);
+  }, [triggerSync]);
 
   // Update service worker
   const updateSW = useCallback(() => {
@@ -92,6 +149,12 @@ export function useOffline() {
     isOnline,
     swReady,
     swWaitingReady,
+    isSyncing,
+    pendingCount,
+    lastSyncResult,
     updateSW,
+    setUid,
+    triggerSync,
+    refreshPendingCount,
   };
 }

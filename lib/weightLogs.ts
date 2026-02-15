@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { WeightLog } from './types/firestore';
 import { getErrorMessage } from './utils/errorMessages';
+import { cachedFetch, cacheInvalidate } from './cache';
 
 // Helper to convert Firestore Timestamps to Dates
 const convertTimestamps = (data: any): any => {
@@ -44,6 +45,7 @@ export async function addWeightLog(
       updatedAt: now,
     });
 
+    cacheInvalidate(`weightLogs:${uid}`);
     return docRef.id;
   } catch (error) {
     console.error('Error adding weight log:', error);
@@ -55,19 +57,21 @@ export async function addWeightLog(
  * Get all weight logs for a user
  */
 export async function getWeightLogs(uid: string, limitCount: number = 100): Promise<WeightLog[]> {
-  try {
-    const logsRef = collection(db, 'users', uid, 'weightLogs');
-    const q = query(logsRef, orderBy('date', 'desc'), limit(limitCount));
+  return cachedFetch(`weightLogs:${uid}:${limitCount}`, async () => {
+    try {
+      const logsRef = collection(db, 'users', uid, 'weightLogs');
+      const q = query(logsRef, orderBy('date', 'desc'), limit(limitCount));
 
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((doc) => ({
-      ...convertTimestamps(doc.data()),
-      id: doc.id,
-    })) as WeightLog[];
-  } catch (error) {
-    console.error('Error fetching weight logs:', error);
-    throw new Error(getErrorMessage(error, 'Failed to fetch weight logs'));
-  }
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map((doc) => ({
+        ...convertTimestamps(doc.data()),
+        id: doc.id,
+      })) as WeightLog[];
+    } catch (error) {
+      console.error('Error fetching weight logs:', error);
+      throw new Error(getErrorMessage(error, 'Failed to fetch weight logs'));
+    }
+  });
 }
 
 /**
@@ -142,6 +146,7 @@ export async function updateWeightLog(
     }
 
     await updateDoc(docRef, updateData);
+    cacheInvalidate(`weightLogs:${uid}`);
   } catch (error) {
     console.error('Error updating weight log:', error);
     throw new Error(getErrorMessage(error, 'Failed to update weight log'));
@@ -155,6 +160,7 @@ export async function deleteWeightLog(uid: string, logId: string): Promise<void>
   try {
     const docRef = doc(db, 'users', uid, 'weightLogs', logId);
     await deleteDoc(docRef);
+    cacheInvalidate(`weightLogs:${uid}`);
   } catch (error) {
     console.error('Error deleting weight log:', error);
     throw new Error(getErrorMessage(error, 'Failed to delete weight log'));

@@ -2,6 +2,8 @@
 
 import { Goal } from '@/lib/types/firestore';
 import { Target, Calendar, TrendingUp, Edit, Trash2, CheckCircle } from 'lucide-react';
+import { useUnits } from '@/components/providers/UnitProvider';
+import { displayWeight } from '@/lib/utils/units';
 
 interface GoalCardProps {
   goal: Goal;
@@ -12,6 +14,7 @@ interface GoalCardProps {
 }
 
 export default function GoalCard({ goal, progress = 0, onEdit, onDelete, onComplete }: GoalCardProps) {
+  const { unitSystem } = useUnits();
   const getGoalIcon = (type: Goal['type']) => {
     switch (type) {
       case 'weight':
@@ -142,7 +145,7 @@ export default function GoalCard({ goal, progress = 0, onEdit, onDelete, onCompl
       <div className="flex flex-wrap gap-2 text-xs">
         {goal.targetWeight && (
           <span className="px-2 py-1 rounded-lg bg-zinc-100 dark:bg-zinc-800 text-[color:var(--muted-foreground)]">
-            Target: {goal.targetWeight}kg
+            Target: {displayWeight(goal.targetWeight, unitSystem)}
           </span>
         )}
         {goal.targetWorkoutsPerWeek && (

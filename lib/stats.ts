@@ -12,6 +12,8 @@ import { Workout, Meal } from './types/firestore';
 import { getWorkouts, getWorkoutsByDateRange } from './workouts';
 import { getMeals, getMealsByDate, getDayMacros } from './meals';
 import { getErrorMessage } from './utils/errorMessages';
+import { cachedFetch } from './cache';
+import { UnitSystem, displayWeight } from './utils/units';
 
 /**
  * Stats Service Layer
@@ -88,7 +90,7 @@ export async function getFavoriteExercises(uid: string, limit: number = 5) {
 /**
  * Get recent entries (workouts & meals combined)
  */
-export async function getRecentEntries(uid: string, count: number = 5) {
+export async function getRecentEntries(uid: string, count: number = 5, unitSystem: UnitSystem = 'metric') {
   try {
     const [workouts, meals] = await Promise.all([
       getWorkouts(uid, count),
@@ -101,7 +103,7 @@ export async function getRecentEntries(uid: string, count: number = 5) {
         type: 'workout' as const,
         id: w.id,
         title: w.exercise,
-        subtitle: `${w.sets}x${w.reps}${w.weight ? ` @ ${w.weight}kg` : ''}`,
+        subtitle: `${w.sets}x${w.reps}${w.weight ? ` @ ${displayWeight(w.weight, unitSystem)}` : ''}`,
         date: w.date,
         icon: '💪',
       })),
@@ -225,36 +227,39 @@ export async function getMonthlyStats(uid: string) {
 /**
  * Get comprehensive dashboard data
  */
-export async function getDashboardStats(uid: string) {
-  try {
-    const [
-      weeklyCount,
-      todayCalories,
-      todayMacros,
-      favoriteExercises,
-      recentEntries,
-      streak,
-      monthlyStats,
-    ] = await Promise.all([
-      getWeeklyWorkoutCount(uid),
-      getTodayCalories(uid),
-      getTodayMacros(uid),
-      getFavoriteExercises(uid, 3),
-      getRecentEntries(uid, 5),
-      getWorkoutStreak(uid),
-      getMonthlyStats(uid),
-    ]);
+export async function getDashboardStats(uid: string, unitSystem: UnitSystem = 'metric') {
+  // Cache dashboard stats for 2 minutes (shorter TTL since it's aggregate data)
+  return cachedFetch(`stats:${uid}:dashboard:${unitSystem}`, async () => {
+    try {
+      const [
+        weeklyCount,
+        todayCalories,
+        todayMacros,
+        favoriteExercises,
+        recentEntries,
+        streak,
+        monthlyStats,
+      ] = await Promise.all([
+        getWeeklyWorkoutCount(uid),
+        getTodayCalories(uid),
+        getTodayMacros(uid),
+        getFavoriteExercises(uid, 3),
+        getRecentEntries(uid, 5, unitSystem),
+        getWorkoutStreak(uid),
+        getMonthlyStats(uid),
+      ]);
 
-    return {
-      weeklyWorkouts: weeklyCount,
-      todayCalories,
-      todayMacros,
-      favoriteExercises,
-      recentEntries,
-      workoutStreak: streak,
-      monthlyStats,
-    };
-  } catch (error) {
-    throw new Error(getErrorMessage(error, 'Failed to get dashboard stats'));
-  }
+      return {
+        weeklyWorkouts: weeklyCount,
+        todayCalories,
+        todayMacros,
+        favoriteExercises,
+        recentEntries,
+        workoutStreak: streak,
+        monthlyStats,
+      };
+    } catch (error) {
+      throw new Error(getErrorMessage(error, 'Failed to get dashboard stats'));
+    }
+  }, 2 * 60 * 1000);
 }

@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { Goal } from './types/firestore';
 import { getErrorMessage } from './utils/errorMessages';
+import { cachedFetch, cacheInvalidate } from './cache';
 
 // Helper to convert Firestore Timestamps to Dates
 const convertTimestamps = (data: any): any => {
@@ -53,6 +54,7 @@ export async function addGoal(
       updatedAt: now,
     });
 
+    cacheInvalidate(`goals:${uid}`);
     return docRef.id;
   } catch (error) {
     console.error('Error adding goal:', error);
@@ -64,30 +66,30 @@ export async function addGoal(
  * Get all goals for a user
  */
 export async function getGoals(uid: string, status?: Goal['status']): Promise<Goal[]> {
-  try {
-    const goalsRef = collection(db, 'users', uid, 'goals');
-    
-    // If filtering by status, use where clause only (no orderBy to avoid index requirement)
-    // We'll sort in memory instead
-    let q;
-    if (status) {
-      q = query(goalsRef, where('status', '==', status));
-    } else {
-      q = query(goalsRef);
+  const cacheKey = `goals:${uid}:${status || 'all'}`;
+  return cachedFetch(cacheKey, async () => {
+    try {
+      const goalsRef = collection(db, 'users', uid, 'goals');
+      
+      let q;
+      if (status) {
+        q = query(goalsRef, where('status', '==', status));
+      } else {
+        q = query(goalsRef);
+      }
+
+      const snapshot = await getDocs(q);
+      const goals = snapshot.docs.map((doc) => ({
+        ...convertTimestamps(doc.data()),
+        id: doc.id,
+      })) as Goal[];
+
+      return goals.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    } catch (error) {
+      console.error('Error fetching goals:', error);
+      throw new Error(getErrorMessage(error, 'Failed to fetch goals'));
     }
-
-    const snapshot = await getDocs(q);
-    const goals = snapshot.docs.map((doc) => ({
-      ...convertTimestamps(doc.data()),
-      id: doc.id,
-    })) as Goal[];
-
-    // Sort by createdAt in descending order (most recent first)
-    return goals.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
-  } catch (error) {
-    console.error('Error fetching goals:', error);
-    throw new Error(getErrorMessage(error, 'Failed to fetch goals'));
-  }
+  });
 }
 
 /**
@@ -146,6 +148,7 @@ export async function updateGoal(
     }
 
     await updateDoc(docRef, updateData);
+    cacheInvalidate(`goals:${uid}`);
   } catch (error) {
     console.error('Error updating goal:', error);
     throw new Error(getErrorMessage(error, 'Failed to update goal'));
@@ -159,6 +162,7 @@ export async function deleteGoal(uid: string, goalId: string): Promise<void> {
   try {
     const docRef = doc(db, 'users', uid, 'goals', goalId);
     await deleteDoc(docRef);
+    cacheInvalidate(`goals:${uid}`);
   } catch (error) {
     console.error('Error deleting goal:', error);
     throw new Error(getErrorMessage(error, 'Failed to delete goal'));

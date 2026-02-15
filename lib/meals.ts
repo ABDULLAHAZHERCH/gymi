@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { Meal } from './types/firestore';
 import { getErrorMessage } from './utils/errorMessages';
+import { cachedFetch, cacheInvalidate } from './cache';
 
 /**
  * Meals Service Layer
@@ -84,6 +85,7 @@ export async function addMeal(
       createdAt: Timestamp.fromDate(new Date()),
       updatedAt: Timestamp.fromDate(new Date()),
     });
+    cacheInvalidate(`meals:${uid}`, `stats:${uid}`, `recent:${uid}`);
     return docRef.id;
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to add meal'));
@@ -94,21 +96,23 @@ export async function addMeal(
  * Get all meals for a user (sorted by date, newest first)
  */
 export async function getMeals(uid: string, maxLimit = 100): Promise<Meal[]> {
-  try {
-    const mealsRef = collection(db, 'users', uid, 'meals');
-    const q = query(mealsRef, orderBy('date', 'desc'), limit(maxLimit));
-    const snapshot = await getDocs(q);
+  return cachedFetch(`meals:${uid}:${maxLimit}`, async () => {
+    try {
+      const mealsRef = collection(db, 'users', uid, 'meals');
+      const q = query(mealsRef, orderBy('date', 'desc'), limit(maxLimit));
+      const snapshot = await getDocs(q);
 
-    return snapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...convertTimestamps(data),
-      };
-    });
-  } catch (error) {
-    throw new Error(getErrorMessage(error, 'Failed to fetch meals'));
-  }
+      return snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...convertTimestamps(data),
+        };
+      });
+    } catch (error) {
+      throw new Error(getErrorMessage(error, 'Failed to fetch meals'));
+    }
+  });
 }
 
 /**
@@ -199,6 +203,7 @@ export async function updateMeal(
     }
 
     await updateDoc(mealRef, updateData);
+    cacheInvalidate(`meals:${uid}`, `stats:${uid}`, `recent:${uid}`);
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to update meal'));
   }
@@ -211,6 +216,7 @@ export async function deleteMeal(uid: string, mealId: string): Promise<void> {
   try {
     const mealRef = doc(db, 'users', uid, 'meals', mealId);
     await deleteDoc(mealRef);
+    cacheInvalidate(`meals:${uid}`, `stats:${uid}`, `recent:${uid}`);
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to delete meal'));
   }

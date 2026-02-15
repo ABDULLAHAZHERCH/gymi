@@ -12,8 +12,11 @@ export interface UserProfile {
 
   // Fitness Info
   goal: 'Build strength' | 'Lose weight' | 'Improve endurance' | 'Stay consistent';
-  weight: number; // kg
-  height: number; // cm
+  weight: number; // kg (always stored in metric)
+  height: number; // cm (always stored in metric)
+
+  // Preferences
+  unitSystem?: 'metric' | 'imperial'; // default: metric
 
   // Metadata
   createdAt: Date;

@@ -18,9 +18,11 @@ import {
   CalendarDays,
 } from 'lucide-react';
 import { triggerDashboardNotifications } from '@/lib/notificationTriggers';
+import { useUnits } from '@/components/providers/UnitProvider';
 
 export default function Home() {
   const { user } = useAuth();
+  const { unitSystem } = useUnits();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -32,7 +34,7 @@ export default function Home() {
       try {
         const [userProfile, dashboardStats] = await Promise.all([
           getUserProfile(user.uid),
-          getDashboardStats(user.uid),
+          getDashboardStats(user.uid, unitSystem),
         ]);
         setProfile(userProfile);
         setStats(dashboardStats);

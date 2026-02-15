@@ -3,6 +3,7 @@ import { NotificationType } from './types/firestore';
 import { calculateStreaks, gatherAchievementStats } from './achievements';
 import { getWorkouts } from './workouts';
 import { getGoals } from './goals';
+import { UnitSystem, displayWeight } from './utils/units';
 
 /**
  * Notification Triggers
@@ -51,7 +52,7 @@ async function hasNotificationToday(
  * Run after a workout is added/updated.
  * Checks: streak milestones, workout count milestones, personal records.
  */
-export async function triggerWorkoutNotifications(uid: string): Promise<void> {
+export async function triggerWorkoutNotifications(uid: string, unitSystem: UnitSystem = 'metric'): Promise<void> {
   try {
     const stats = await gatherAchievementStats(uid);
 
@@ -103,7 +104,7 @@ export async function triggerWorkoutNotifications(uid: string): Promise<void> {
           await createNotification(uid, {
             type: 'personal_record',
             title: 'New Personal Record! 🏅',
-            message: `${latest.exercise}: ${latest.weight}kg — that's a new PR!`,
+            message: `${latest.exercise}: ${displayWeight(latest.weight, unitSystem)} — that's a new PR!`,
             icon: '🏅',
             read: false,
             linkTo: '/workouts',

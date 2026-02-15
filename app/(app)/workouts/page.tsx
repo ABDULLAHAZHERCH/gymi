@@ -23,9 +23,11 @@ import SearchBar from '@/components/ui/SearchBar';
 import FilterPanel, { FilterOptions } from '@/components/features/FilterPanel';
 import { searchAndFilterWorkouts } from '@/lib/utils/search';
 import { triggerWorkoutNotifications } from '@/lib/notificationTriggers';
+import { useUnits } from '@/components/providers/UnitProvider';
 
 export default function WorkoutsPage() {
   const { user } = useAuth();
+  const { unitSystem } = useUnits();
   const { showToast } = useToast();
   const { isOnline, setUid } = useOffline();
 
@@ -118,7 +120,7 @@ export default function WorkoutsPage() {
       setIsModalOpen(false);
       if (isOnline) {
         showToast('Workout added successfully!', 'success');
-        triggerWorkoutNotifications(user.uid).catch(() => {});
+        triggerWorkoutNotifications(user.uid, unitSystem).catch(() => {});
       }
     } catch (error: any) {
       console.error('Error adding workout:', error);

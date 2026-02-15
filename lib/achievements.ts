@@ -15,6 +15,7 @@ import { getWorkouts } from './workouts';
 import { getMeals } from './meals';
 import { getErrorMessage } from './utils/errorMessages';
 import { getWeightLogs } from './weightLogs';
+import { cachedFetch, cacheInvalidate } from './cache';
 
 /**
  * Achievements Service Layer
@@ -223,6 +224,7 @@ export async function unlockAchievement(
       createdAt: Timestamp.fromDate(new Date()),
     });
 
+    cacheInvalidate(`achievements:${uid}`);
     return docRef.id;
   } catch (error) {
     console.error('Error unlocking achievement:', error);
@@ -234,28 +236,30 @@ export async function unlockAchievement(
  * Get all achievements for a user
  */
 export async function getAchievements(uid: string): Promise<Achievement[]> {
-  try {
-    const achievementsRef = collection(db, 'users', uid, 'achievements');
-    const q = query(achievementsRef, orderBy('achievedAt', 'desc'));
-    const snapshot = await getDocs(q);
+  return cachedFetch(`achievements:${uid}`, async () => {
+    try {
+      const achievementsRef = collection(db, 'users', uid, 'achievements');
+      const q = query(achievementsRef, orderBy('achievedAt', 'desc'));
+      const snapshot = await getDocs(q);
 
-    return snapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        type: data.type,
-        title: data.title,
-        description: data.description,
-        icon: data.icon,
-        milestone: data.milestone,
-        achievedAt: data.achievedAt?.toDate?.() || new Date(),
-        createdAt: data.createdAt?.toDate?.() || new Date(),
-      };
-    });
-  } catch (error) {
-    console.error('Error fetching achievements:', error);
-    throw new Error(getErrorMessage(error, 'Failed to fetch achievements'));
-  }
+      return snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          type: data.type,
+          title: data.title,
+          description: data.description,
+          icon: data.icon,
+          milestone: data.milestone,
+          achievedAt: data.achievedAt?.toDate?.() || new Date(),
+          createdAt: data.createdAt?.toDate?.() || new Date(),
+        };
+      });
+    } catch (error) {
+      console.error('Error fetching achievements:', error);
+      throw new Error(getErrorMessage(error, 'Failed to fetch achievements'));
+    }
+  });
 }
 
 // ============================================================

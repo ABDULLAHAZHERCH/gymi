@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { logoutUser } from '@/lib/auth';
+import { cacheClear } from '@/lib/cache';
 import { User, LogOut, Sun, Moon } from 'lucide-react';
 
 const THEME_KEY = 'gymi-theme';
@@ -60,6 +61,7 @@ export default function UserMenu() {
     setLoggingOut(true);
     try {
       await logoutUser();
+      cacheClear();
       router.push('/');
     } catch {
       // Error already sanitized in service layer

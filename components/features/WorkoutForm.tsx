@@ -6,6 +6,8 @@ import { Workout } from '@/lib/types/firestore';
 import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { validateField, ValidationErrors } from '@/lib/utils/validation';
 import { useFormShortcuts } from '@/lib/hooks/useKeyboardShortcut';
+import { useUnits } from '@/components/providers/UnitProvider';
+import { weightUnit, weightToKg, getWeightInUnit } from '@/lib/utils/units';
 
 // Helper to format Date to datetime-local string in user's local timezone
 const formatDateToLocalString = (date: Date): string => {
@@ -30,11 +32,13 @@ export default function WorkoutForm({
   initialData,
   isLoading = false,
 }: WorkoutFormProps) {
+  const { unitSystem } = useUnits();
+  const wu = weightUnit(unitSystem);
   const [formData, setFormData] = useState({
     exercise: initialData?.exercise || '',
     sets: initialData?.sets?.toString() || '',
     reps: initialData?.reps?.toString() || '',
-    weight: initialData?.weight?.toString() || '',
+    weight: initialData?.weight ? getWeightInUnit(initialData.weight, unitSystem).toString() : '',
     duration: initialData?.duration?.toString() || '',
     notes: initialData?.notes || '',
     date: initialData?.date
@@ -114,7 +118,7 @@ export default function WorkoutForm({
         exercise: formData.exercise.trim(),
         sets: parseInt(formData.sets),
         reps: parseInt(formData.reps),
-        weight: formData.weight ? parseFloat(formData.weight) : 0,
+        weight: formData.weight ? weightToKg(parseFloat(formData.weight), unitSystem) : 0,
         duration: formData.duration ? parseInt(formData.duration) : undefined,
         notes: formData.notes?.trim() || undefined,
         date: dateObj,
@@ -226,7 +230,7 @@ export default function WorkoutForm({
           </label>
 
           <label className="block text-xs font-medium">
-            Weight (kg)
+            Weight ({wu})
             <input
               type="number"
               placeholder="60"

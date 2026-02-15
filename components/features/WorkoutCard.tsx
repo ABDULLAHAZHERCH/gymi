@@ -2,6 +2,8 @@
 
 import { Dumbbell, Edit2, Trash2 } from 'lucide-react';
 import { Workout } from '@/lib/types/firestore';
+import { useUnits } from '@/components/providers/UnitProvider';
+import { displayWeight } from '@/lib/utils/units';
 
 interface WorkoutCardProps {
   workout: Workout;
@@ -10,6 +12,7 @@ interface WorkoutCardProps {
 }
 
 export default function WorkoutCard({ workout, onEdit, onDelete }: WorkoutCardProps) {
+  const { unitSystem } = useUnits();
   const formatDate = (date: Date) => {
     const d = new Date(date);
     return d.toLocaleDateString('en-US', {
@@ -32,7 +35,7 @@ export default function WorkoutCard({ workout, onEdit, onDelete }: WorkoutCardPr
             <h3 className="font-semibold text-[color:var(--foreground)]">{workout.exercise}</h3>
             <p className="text-sm text-[color:var(--muted-foreground)]">
               {workout.sets} sets × {workout.reps} reps
-              {workout.weight > 0 && ` • ${workout.weight} kg`}
+              {workout.weight > 0 && ` • ${displayWeight(workout.weight, unitSystem)}`}
             </p>
             {workout.duration && (
               <p className="text-xs text-[color:var(--muted-foreground)]">

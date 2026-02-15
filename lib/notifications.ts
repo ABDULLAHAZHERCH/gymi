@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { Notification, NotificationType } from './types/firestore';
 import { getErrorMessage } from './utils/errorMessages';
+import { cachedFetch, cacheInvalidate } from './cache';
 
 /**
  * Notifications Service Layer
@@ -65,6 +66,7 @@ export async function createNotification(
       read: false,
       createdAt: Timestamp.now(),
     });
+    cacheInvalidate(`notifications:${uid}`, `unread:${uid}`);
     return docRef.id;
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to create notification'));
@@ -78,29 +80,33 @@ export async function getNotifications(
   uid: string,
   count: number = 20
 ): Promise<Notification[]> {
-  try {
-    const ref = collection(db, 'users', uid, 'notifications');
-    const q = query(ref, orderBy('createdAt', 'desc'), limit(count));
-    const snapshot = await getDocs(q);
-    return snapshot.docs.map((d) => docToNotification(d.id, d.data()));
-  } catch (error) {
-    throw new Error(getErrorMessage(error, 'Failed to fetch notifications'));
-  }
+  return cachedFetch(`notifications:${uid}:${count}`, async () => {
+    try {
+      const ref = collection(db, 'users', uid, 'notifications');
+      const q = query(ref, orderBy('createdAt', 'desc'), limit(count));
+      const snapshot = await getDocs(q);
+      return snapshot.docs.map((d) => docToNotification(d.id, d.data()));
+    } catch (error) {
+      throw new Error(getErrorMessage(error, 'Failed to fetch notifications'));
+    }
+  });
 }
 
 /**
  * Get unread notification count
  */
 export async function getUnreadCount(uid: string): Promise<number> {
-  try {
-    const ref = collection(db, 'users', uid, 'notifications');
-    const q = query(ref, where('read', '==', false));
-    const snapshot = await getDocs(q);
-    return snapshot.size;
-  } catch (error) {
-    console.error('Error getting unread count:', error);
-    return 0;
-  }
+  return cachedFetch(`unread:${uid}`, async () => {
+    try {
+      const ref = collection(db, 'users', uid, 'notifications');
+      const q = query(ref, where('read', '==', false));
+      const snapshot = await getDocs(q);
+      return snapshot.size;
+    } catch (error) {
+      console.error('Error getting unread count:', error);
+      return 0;
+    }
+  }, 60 * 1000);
 }
 
 /**
@@ -116,6 +122,7 @@ export async function markAsRead(
       read: true,
       readAt: Timestamp.now(),
     });
+    cacheInvalidate(`notifications:${uid}`, `unread:${uid}`);
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to mark notification as read'));
   }
@@ -138,6 +145,7 @@ export async function markAllAsRead(uid: string): Promise<void> {
       batch.update(d.ref, { read: true, readAt: now });
     });
     await batch.commit();
+    cacheInvalidate(`notifications:${uid}`, `unread:${uid}`);
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to mark all as read'));
   }
@@ -153,6 +161,7 @@ export async function deleteNotification(
   try {
     const docRef = doc(db, 'users', uid, 'notifications', notificationId);
     await deleteDoc(docRef);
+    cacheInvalidate(`notifications:${uid}`, `unread:${uid}`);
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to delete notification'));
   }
@@ -178,6 +187,7 @@ export async function deleteOldNotifications(
     const batch = writeBatch(db);
     snapshot.docs.forEach((d) => batch.delete(d.ref));
     await batch.commit();
+    cacheInvalidate(`notifications:${uid}`, `unread:${uid}`);
     return snapshot.size;
   } catch (error) {
     console.error('Error cleaning old notifications:', error);

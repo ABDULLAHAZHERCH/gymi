@@ -1,6 +1,7 @@
 import { Workout, Meal, UserProfile } from '@/lib/types/firestore';
 import { Goal } from '@/lib/types/firestore';
 import { WeightLog } from '@/lib/types/firestore';
+import { UnitSystem, weightUnit, getWeightInUnit } from '@/lib/utils/units';
 
 /**
  * Export data types
@@ -21,14 +22,15 @@ export interface ExportData {
 /**
  * Convert data to CSV format
  */
-export function convertWorkoutsToCSV(workouts: Workout[]): string {
-  const headers = ['Date', 'Exercise', 'Sets', 'Reps', 'Weight (kg)', 'Duration (min)', 'Notes'];
+export function convertWorkoutsToCSV(workouts: Workout[], unitSystem: UnitSystem = 'metric'): string {
+  const wu = weightUnit(unitSystem);
+  const headers = ['Date', 'Exercise', 'Sets', 'Reps', `Weight (${wu})`, 'Duration (min)', 'Notes'];
   const rows = workouts.map((w) => [
     new Date(w.date).toLocaleString(),
     w.exercise,
     w.sets.toString(),
     w.reps.toString(),
-    w.weight.toString(),
+    getWeightInUnit(w.weight, unitSystem).toString(),
     w.duration?.toString() || '',
     w.notes || '',
   ]);
@@ -79,11 +81,12 @@ export function convertMealsToCSV(meals: Meal[]): string {
 /**
  * Convert weight logs to CSV format
  */
-export function convertWeightLogsToCSV(logs: WeightLog[]): string {
-  const headers = ['Date', 'Weight (kg)', 'Notes'];
+export function convertWeightLogsToCSV(logs: WeightLog[], unitSystem: UnitSystem = 'metric'): string {
+  const wu = weightUnit(unitSystem);
+  const headers = ['Date', `Weight (${wu})`, 'Notes'];
   const rows = logs.map((log) => [
     new Date(log.date).toLocaleString(),
-    log.weight.toString(),
+    getWeightInUnit(log.weight, unitSystem).toString(),
     log.notes || '',
   ]);
 
@@ -120,8 +123,8 @@ export function downloadFile(content: string, filename: string, mimeType: string
 /**
  * Export workouts as CSV
  */
-export function exportWorkoutsCSV(workouts: Workout[]): void {
-  const csv = convertWorkoutsToCSV(workouts);
+export function exportWorkoutsCSV(workouts: Workout[], unitSystem: UnitSystem = 'metric'): void {
+  const csv = convertWorkoutsToCSV(workouts, unitSystem);
   const filename = `gymi-workouts-${new Date().toISOString().split('T')[0]}.csv`;
   downloadFile(csv, filename, 'text/csv');
 }
@@ -138,8 +141,8 @@ export function exportMealsCSV(meals: Meal[]): void {
 /**
  * Export weight logs as CSV
  */
-export function exportWeightLogsCSV(logs: WeightLog[]): void {
-  const csv = convertWeightLogsToCSV(logs);
+export function exportWeightLogsCSV(logs: WeightLog[], unitSystem: UnitSystem = 'metric'): void {
+  const csv = convertWeightLogsToCSV(logs, unitSystem);
   const filename = `gymi-weight-logs-${new Date().toISOString().split('T')[0]}.csv`;
   downloadFile(csv, filename, 'text/csv');
 }

@@ -6,14 +6,18 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { createUserProfile, hasUserProfile } from '@/lib/auth';
 import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { triggerWelcomeNotification } from '@/lib/notificationTriggers';
+import { UnitSystem, lbsToKg, ftInToCm } from '@/lib/utils/units';
 
 export default function OnboardingPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useAuth();
+  const [unitSystem, setUnitSystem] = useState<UnitSystem>('metric');
   const [formData, setFormData] = useState({
     goal: 'Build strength',
     weight: '',
     height: '',
+    heightFt: '',
+    heightIn: '',
   });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(authLoading);
@@ -27,7 +31,6 @@ export default function OnboardingPage() {
       try {
         const profileExists = await hasUserProfile(user.uid);
         if (profileExists) {
-          // User already completed onboarding
           router.push('/home');
         }
       } catch (error) {
@@ -50,19 +53,41 @@ export default function OnboardingPage() {
         return;
       }
 
-      if (!formData.weight || !formData.height) {
-        setError('Weight and height are required');
+      // Validate weight
+      if (!formData.weight) {
+        setError('Weight is required');
         setLoading(false);
         return;
       }
 
-      // Create user profile in Firestore
+      // Validate height
+      if (unitSystem === 'metric' && !formData.height) {
+        setError('Height is required');
+        setLoading(false);
+        return;
+      }
+      if (unitSystem === 'imperial' && !formData.heightFt) {
+        setError('Height (feet) is required');
+        setLoading(false);
+        return;
+      }
+
+      // Convert to metric for storage
+      const weightKg = unitSystem === 'imperial'
+        ? lbsToKg(parseFloat(formData.weight))
+        : parseFloat(formData.weight);
+
+      const heightCm = unitSystem === 'imperial'
+        ? ftInToCm(parseInt(formData.heightFt), parseInt(formData.heightIn || '0'))
+        : parseFloat(formData.height);
+
       await createUserProfile(user.uid, {
         name: user.displayName || '',
         email: user.email || '',
         goal: formData.goal as 'Build strength' | 'Lose weight' | 'Improve endurance' | 'Stay consistent',
-        weight: parseFloat(formData.weight),
-        height: parseFloat(formData.height),
+        weight: weightKg,
+        height: heightCm,
+        unitSystem,
       });
 
       // Send welcome notification
@@ -111,29 +136,98 @@ export default function OnboardingPage() {
             <option>Stay consistent</option>
           </select>
         </label>
+
+        {/* Unit System Toggle */}
+        <div className="space-y-2">
+          <p className="text-sm font-medium">Measurement Units</p>
+          <div className="flex rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+            <button
+              type="button"
+              onClick={() => setUnitSystem('metric')}
+              className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+                unitSystem === 'metric'
+                  ? 'bg-[color:var(--foreground)] text-[color:var(--background)]'
+                  : 'bg-[color:var(--background)] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]'
+              }`}
+            >
+              Metric (kg, cm)
+            </button>
+            <button
+              type="button"
+              onClick={() => setUnitSystem('imperial')}
+              className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+                unitSystem === 'imperial'
+                  ? 'bg-[color:var(--foreground)] text-[color:var(--background)]'
+                  : 'bg-[color:var(--background)] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]'
+              }`}
+            >
+              Imperial (lbs, ft)
+            </button>
+          </div>
+        </div>
+
+        {/* Weight & Height */}
         <div className="grid grid-cols-2 gap-4">
           <label className="block text-sm font-medium">
-            Weight (kg)
+            Weight ({unitSystem === 'imperial' ? 'lbs' : 'kg'})
             <input
               type="number"
-              placeholder="70"
+              placeholder={unitSystem === 'imperial' ? '154' : '70'}
               value={formData.weight}
               onChange={(e) => setFormData({ ...formData, weight: e.target.value })}
               disabled={loading}
+              min="0"
+              step={unitSystem === 'imperial' ? '1' : '0.1'}
               className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
             />
           </label>
-          <label className="block text-sm font-medium">
-            Height (cm)
-            <input
-              type="number"
-              placeholder="175"
-              value={formData.height}
-              onChange={(e) => setFormData({ ...formData, height: e.target.value })}
-              disabled={loading}
-              className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
-            />
-          </label>
+
+          {unitSystem === 'metric' ? (
+            <label className="block text-sm font-medium">
+              Height (cm)
+              <input
+                type="number"
+                placeholder="175"
+                value={formData.height}
+                onChange={(e) => setFormData({ ...formData, height: e.target.value })}
+                disabled={loading}
+                min="0"
+                className="mt-2 w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
+              />
+            </label>
+          ) : (
+            <div className="space-y-1">
+              <p className="text-sm font-medium">Height</p>
+              <div className="flex gap-2 mt-2">
+                <label className="flex-1">
+                  <input
+                    type="number"
+                    placeholder="5"
+                    value={formData.heightFt}
+                    onChange={(e) => setFormData({ ...formData, heightFt: e.target.value })}
+                    disabled={loading}
+                    min="0"
+                    max="8"
+                    className="w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
+                  />
+                  <span className="text-xs text-[color:var(--muted-foreground)] mt-0.5 block">ft</span>
+                </label>
+                <label className="flex-1">
+                  <input
+                    type="number"
+                    placeholder="9"
+                    value={formData.heightIn}
+                    onChange={(e) => setFormData({ ...formData, heightIn: e.target.value })}
+                    disabled={loading}
+                    min="0"
+                    max="11"
+                    className="w-full rounded-2xl border border-zinc-200 bg-[color:var(--background)] px-4 py-3 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 disabled:opacity-50"
+                  />
+                  <span className="text-xs text-[color:var(--muted-foreground)] mt-0.5 block">in</span>
+                </label>
+              </div>
+            </div>
+          )}
         </div>
 
         {error && <p className="rounded-lg bg-red-100 p-3 text-sm text-red-700 dark:bg-red-900 dark:text-red-100">{error}</p>}

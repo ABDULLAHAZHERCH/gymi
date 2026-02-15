@@ -13,6 +13,8 @@ import { calculateStreaks } from '@/lib/achievements';
 import { getWorkouts } from '@/lib/workouts';
 import { Goal, WeightLog, Achievement } from '@/lib/types/firestore';
 import { triggerGoalCompletedNotification } from '@/lib/notificationTriggers';
+import { useUnits } from '@/components/providers/UnitProvider';
+import { weightUnit, getWeightInUnit, weightToKg, displayWeight } from '@/lib/utils/units';
 import AppLayout from '@/components/layout/AppLayout';
 import GoalCard from '@/components/features/GoalCard';
 import GoalForm from '@/components/features/GoalForm';
@@ -23,6 +25,7 @@ import { Plus, Target, TrendingUp, Award, Lightbulb, ChevronRight } from 'lucide
 
 export default function ProfilePage() {
   const { user } = useAuth();
+  const { unitSystem } = useUnits();
   const { showToast } = useToast();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [goalsLoading, setGoalsLoading] = useState(true);
@@ -53,7 +56,7 @@ export default function ProfilePage() {
           getActiveGoals(user.uid),
           getWeightLogs(user.uid, 30),
           getAchievements(user.uid).catch(() => []),
-          getInsights(user.uid).catch(() => []),
+          getInsights(user.uid, unitSystem).catch(() => []),
           getWorkouts(user.uid, 500).catch(() => []),
         ]);
         setGoals(goalsData);
@@ -140,15 +143,18 @@ export default function ProfilePage() {
         return;
       }
 
+      // Convert to kg if imperial
+      const weightKg = weightToKg(weight, unitSystem);
+
       const id = await addWeightLog(user.uid, {
-        weight,
+        weight: weightKg,
         notes: newNotes.trim() || undefined,
         date: new Date(),
       });
 
       const newLog: WeightLog = {
         id,
-        weight,
+        weight: weightKg,
         notes: newNotes.trim() || undefined,
         date: new Date(),
         createdAt: new Date(),
@@ -329,7 +335,7 @@ export default function ProfilePage() {
                       >
                         <div>
                           <p className="text-sm font-medium text-[color:var(--foreground)]">
-                            {log.weight}kg
+                            {displayWeight(log.weight, unitSystem)}
                           </p>
                           {log.notes && (
                             <p className="text-xs text-[color:var(--muted-foreground)]">{log.notes}</p>
@@ -431,10 +437,10 @@ export default function ProfilePage() {
 
           <div className="space-y-4">
             <label className="block text-sm font-medium">
-              Weight (kg) *
+              Weight ({weightUnit(unitSystem)}) *
               <input
                 type="number"
-                placeholder="70.5"
+                placeholder={unitSystem === 'imperial' ? '154' : '70.5'}
                 min="0"
                 step="0.1"
                 value={newWeight}

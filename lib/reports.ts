@@ -4,6 +4,7 @@ import { getWeightLogs } from './weightLogs';
 import { getActiveGoals } from './goals';
 import { calculateStreaks } from './achievements';
 import { Workout, Meal, WeightLog, Goal } from './types/firestore';
+import { UnitSystem, displayWeightChange } from './utils/units';
 
 /**
  * Reports & Insights Service
@@ -294,7 +295,7 @@ export async function getMonthlyReport(uid: string): Promise<MonthlyReport> {
 /**
  * Generate personalized insights based on user data
  */
-export async function getInsights(uid: string): Promise<Insight[]> {
+export async function getInsights(uid: string, unitSystem: UnitSystem = 'metric'): Promise<Insight[]> {
   const [allWorkouts, allMeals, weightLogs] = await Promise.all([
     getWorkouts(uid, 500),
     getMeals(uid, 500),
@@ -347,7 +348,7 @@ export async function getInsights(uid: string): Promise<Insight[]> {
         id: 'weight-down',
         type: 'trend',
         icon: '📉',
-        message: `Your weight is trending down (${trend.toFixed(1)}kg). Stay consistent!`,
+        message: `Your weight is trending down (${displayWeightChange(trend, unitSystem)}). Stay consistent!`,
         priority: 3,
       });
     } else if (trend > 0.5) {
@@ -355,7 +356,7 @@ export async function getInsights(uid: string): Promise<Insight[]> {
         id: 'weight-up',
         type: 'trend',
         icon: '📈',
-        message: `Your weight increased by ${trend.toFixed(1)}kg recently.`,
+        message: `Your weight increased by ${displayWeightChange(trend, unitSystem)} recently.`,
         priority: 3,
       });
     }

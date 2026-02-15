@@ -5,6 +5,8 @@ import { X } from 'lucide-react';
 import { Goal } from '@/lib/types/firestore';
 import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { useFormShortcuts } from '@/lib/hooks/useKeyboardShortcut';
+import { useUnits } from '@/components/providers/UnitProvider';
+import { weightUnit, weightToKg, getWeightInUnit } from '@/lib/utils/units';
 
 const formatDateToInputString = (date: Date): string => {
   const year = date.getFullYear();
@@ -26,11 +28,15 @@ export default function GoalForm({
   initialData,
   isLoading = false,
 }: GoalFormProps) {
+  const { unitSystem } = useUnits();
+  const wu = weightUnit(unitSystem);
   const [formData, setFormData] = useState({
     type: (initialData?.type || 'weight') as Goal['type'],
     title: initialData?.title || '',
     description: initialData?.description || '',
-    targetWeight: initialData?.targetWeight?.toString() || '',
+    targetWeight: initialData?.targetWeight
+      ? getWeightInUnit(initialData.targetWeight, unitSystem).toString()
+      : '',
     targetWorkoutsPerWeek: initialData?.targetWorkoutsPerWeek?.toString() || '',
     targetCaloriesPerDay: initialData?.targetCaloriesPerDay?.toString() || '',
     targetProtein: initialData?.targetProtein?.toString() || '',
@@ -89,7 +95,7 @@ export default function GoalForm({
 
       // Add type-specific fields
       if (formData.type === 'weight' && formData.targetWeight) {
-        goalData.targetWeight = parseFloat(formData.targetWeight);
+        goalData.targetWeight = weightToKg(parseFloat(formData.targetWeight), unitSystem);
       }
       if (formData.type === 'workout_frequency' && formData.targetWorkoutsPerWeek) {
         goalData.targetWorkoutsPerWeek = parseInt(formData.targetWorkoutsPerWeek);
@@ -189,7 +195,7 @@ export default function GoalForm({
         {/* Type-specific fields */}
         {formData.type === 'weight' && (
           <label className="block text-sm font-medium">
-            Target Weight (kg) *
+            Target Weight ({wu}) *
             <input
               type="number"
               placeholder="70"

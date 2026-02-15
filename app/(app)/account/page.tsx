@@ -2,15 +2,18 @@
 
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useUnits } from '@/components/providers/UnitProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
 import { getUserProfile, updateUserProfile } from '@/lib/auth';
 import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { UserProfile } from '@/lib/types/firestore';
+import { displayWeight, displayHeight, UnitSystem } from '@/lib/utils/units';
 import AppLayout from '@/components/layout/AppLayout';
-import { User, Save, Shield } from 'lucide-react';
+import { User, Save, Shield, Ruler } from 'lucide-react';
 
 export default function AccountPage() {
   const { user } = useAuth();
+  const { unitSystem, setUnitSystem } = useUnits();
   const { showToast } = useToast();
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [loading, setLoading] = useState(true);
@@ -122,13 +125,13 @@ export default function AccountPage() {
                     <div>
                       <p className="text-xs text-[color:var(--muted-foreground)]">Weight</p>
                       <p className="text-sm font-medium text-[color:var(--foreground)]">
-                        {profile.weight} kg
+                        {displayWeight(profile.weight, unitSystem)}
                       </p>
                     </div>
                     <div>
                       <p className="text-xs text-[color:var(--muted-foreground)]">Height</p>
                       <p className="text-sm font-medium text-[color:var(--foreground)]">
-                        {profile.height} cm
+                        {displayHeight(profile.height, unitSystem)}
                       </p>
                     </div>
                   </div>
@@ -144,6 +147,41 @@ export default function AccountPage() {
                 </button>
               </div>
             )}
+          </div>
+
+          {/* Unit Preferences */}
+          <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 shadow-sm dark:border-zinc-800">
+            <p className="text-sm font-semibold text-[color:var(--foreground)] flex items-center gap-2 mb-4">
+              <Ruler className="w-4 h-4" />
+              Measurement Units
+            </p>
+            <p className="text-xs text-[color:var(--muted-foreground)] mb-3">
+              Choose how weight and height are displayed throughout the app
+            </p>
+            <div className="flex rounded-2xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setUnitSystem('metric')}
+                className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+                  unitSystem === 'metric'
+                    ? 'bg-[color:var(--foreground)] text-[color:var(--background)]'
+                    : 'bg-[color:var(--background)] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]'
+                }`}
+              >
+                Metric (kg, cm)
+              </button>
+              <button
+                type="button"
+                onClick={() => setUnitSystem('imperial')}
+                className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+                  unitSystem === 'imperial'
+                    ? 'bg-[color:var(--foreground)] text-[color:var(--background)]'
+                    : 'bg-[color:var(--background)] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]'
+                }`}
+              >
+                Imperial (lbs, ft)
+              </button>
+            </div>
           </div>
 
           {/* Account Security Info */}

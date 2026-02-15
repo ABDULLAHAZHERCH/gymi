@@ -15,6 +15,7 @@ import {
 } from 'firebase/firestore';
 import { Workout } from './types/firestore';
 import { getErrorMessage } from './utils/errorMessages';
+import { cachedFetch, cacheInvalidate } from './cache';
 
 /**
  * Workout Service Layer
@@ -80,6 +81,7 @@ export async function addWorkout(
       createdAt: Timestamp.fromDate(new Date()),
       updatedAt: Timestamp.fromDate(new Date()),
     });
+    cacheInvalidate(`workouts:${uid}`, `stats:${uid}`, `recent:${uid}`);
     return docRef.id;
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to add workout'));
@@ -90,21 +92,23 @@ export async function addWorkout(
  * Get all workouts for a user (sorted by date, newest first)
  */
 export async function getWorkouts(uid: string, maxLimit = 100): Promise<Workout[]> {
-  try {
-    const workoutsRef = collection(db, 'users', uid, 'workouts');
-    const q = query(workoutsRef, orderBy('date', 'desc'), limit(maxLimit));
-    const snapshot = await getDocs(q);
+  return cachedFetch(`workouts:${uid}:${maxLimit}`, async () => {
+    try {
+      const workoutsRef = collection(db, 'users', uid, 'workouts');
+      const q = query(workoutsRef, orderBy('date', 'desc'), limit(maxLimit));
+      const snapshot = await getDocs(q);
 
-    return snapshot.docs.map((doc) => {
-      const data = doc.data();
-      return {
-        id: doc.id,
-        ...convertTimestamps(data),
-      };
-    });
-  } catch (error) {
-    throw new Error(getErrorMessage(error, 'Failed to fetch workouts'));
-  }
+      return snapshot.docs.map((doc) => {
+        const data = doc.data();
+        return {
+          id: doc.id,
+          ...convertTimestamps(data),
+        };
+      });
+    } catch (error) {
+      throw new Error(getErrorMessage(error, 'Failed to fetch workouts'));
+    }
+  });
 }
 
 /**
@@ -159,6 +163,7 @@ export async function updateWorkout(
     }
 
     await updateDoc(workoutRef, updateData);
+    cacheInvalidate(`workouts:${uid}`, `stats:${uid}`, `recent:${uid}`);
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to update workout'));
   }
@@ -171,6 +176,7 @@ export async function deleteWorkout(uid: string, workoutId: string): Promise<voi
   try {
     const workoutRef = doc(db, 'users', uid, 'workouts', workoutId);
     await deleteDoc(workoutRef);
+    cacheInvalidate(`workouts:${uid}`, `stats:${uid}`, `recent:${uid}`);
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to delete workout'));
   }

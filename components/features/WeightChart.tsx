@@ -3,6 +3,8 @@
 import { WeightLog } from '@/lib/types/firestore';
 import { TrendingDown, TrendingUp, Minus } from 'lucide-react';
 import { useState, useRef } from 'react';
+import { useUnits } from '@/components/providers/UnitProvider';
+import { getWeightInUnit, weightUnit } from '@/lib/utils/units';
 
 interface WeightChartProps {
   data: WeightLog[];
@@ -12,6 +14,8 @@ interface WeightChartProps {
 export function WeightChart({ data, targetWeight }: WeightChartProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
   const chartRef = useRef<SVGSVGElement>(null);
+  const { unitSystem } = useUnits();
+  const wu = weightUnit(unitSystem);
 
   if (data.length === 0) {
     return (
@@ -28,9 +32,9 @@ export function WeightChart({ data, targetWeight }: WeightChartProps) {
     (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
   );
 
-  const weights = sortedData.map((d) => d.weight);
+  const weights = sortedData.map((d) => getWeightInUnit(d.weight, unitSystem));
   const allValues = [...weights];
-  if (targetWeight) allValues.push(targetWeight);
+  if (targetWeight) allValues.push(getWeightInUnit(targetWeight, unitSystem));
 
   const dataMax = Math.max(...allValues);
   const dataMin = Math.min(...allValues);
@@ -40,8 +44,8 @@ export function WeightChart({ data, targetWeight }: WeightChartProps) {
   const range = maxWeight - minWeight;
 
   // Calculate trend
-  const firstWeight = sortedData[0].weight;
-  const lastWeight = sortedData[sortedData.length - 1].weight;
+  const firstWeight = getWeightInUnit(sortedData[0].weight, unitSystem);
+  const lastWeight = getWeightInUnit(sortedData[sortedData.length - 1].weight, unitSystem);
   const change = lastWeight - firstWeight;
 
   const getTrendIcon = () => {
@@ -67,8 +71,9 @@ export function WeightChart({ data, targetWeight }: WeightChartProps) {
 
   // Map data to SVG coordinates
   const points = sortedData.map((log, i) => {
+    const w = getWeightInUnit(log.weight, unitSystem);
     const x = mx + (i / Math.max(sortedData.length - 1, 1)) * plotW;
-    const y = mt + plotH - ((log.weight - minWeight) / range) * plotH;
+    const y = mt + plotH - ((w - minWeight) / range) * plotH;
     return { x, y, log };
   });
 
@@ -105,7 +110,7 @@ export function WeightChart({ data, targetWeight }: WeightChartProps) {
 
   const targetY =
     targetWeight != null
-      ? mt + plotH - ((targetWeight - minWeight) / range) * plotH
+      ? mt + plotH - ((getWeightInUnit(targetWeight, unitSystem) - minWeight) / range) * plotH
       : null;
 
   // Grid lines (4 horizontal)
@@ -143,7 +148,7 @@ export function WeightChart({ data, targetWeight }: WeightChartProps) {
           </p>
           <p className="text-lg font-bold text-[color:var(--foreground)]">
             {lastWeight}
-            <span className="text-xs font-normal ml-0.5">kg</span>
+            <span className="text-xs font-normal ml-0.5">{wu}</span>
           </p>
         </div>
         <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3 text-center">
@@ -154,7 +159,7 @@ export function WeightChart({ data, targetWeight }: WeightChartProps) {
             {getTrendIcon()}
             {change > 0 ? '+' : ''}
             {change.toFixed(1)}
-            <span className="text-xs font-normal">kg</span>
+            <span className="text-xs font-normal">{wu}</span>
           </p>
         </div>
         <div className="rounded-xl bg-zinc-50 dark:bg-zinc-900 p-3 text-center">
@@ -164,8 +169,8 @@ export function WeightChart({ data, targetWeight }: WeightChartProps) {
           <p className="text-lg font-bold text-[color:var(--foreground)]">
             {targetWeight ? (
               <>
-                {targetWeight}
-                <span className="text-xs font-normal ml-0.5">kg</span>
+                {getWeightInUnit(targetWeight, unitSystem)}
+                <span className="text-xs font-normal ml-0.5">{wu}</span>
               </>
             ) : (
               <span className="text-sm text-[color:var(--muted-foreground)]">—</span>
@@ -307,7 +312,7 @@ export function WeightChart({ data, targetWeight }: WeightChartProps) {
           >
             <div className="rounded-lg bg-zinc-900 dark:bg-zinc-100 px-2.5 py-1.5 shadow-lg">
               <p className="text-xs font-bold text-white dark:text-zinc-900">
-                {points[hoveredIndex].log.weight}kg
+                {getWeightInUnit(points[hoveredIndex].log.weight, unitSystem)}{wu}
               </p>
               <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
                 {new Date(points[hoveredIndex].log.date).toLocaleDateString([], {

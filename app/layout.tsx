@@ -4,6 +4,7 @@ import "./globals.css";
 import ThemeProvider from "@/components/providers/ThemeProvider";
 import { AuthProvider } from "@/components/providers/AuthProvider";
 import { Analytics } from "@vercel/analytics/next";
+import { InstallPromptLoader } from "@/components/ui/InstallPrompt";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -48,6 +49,9 @@ export default function RootLayout({
                 e.preventDefault();
                 window.__deferredInstallPrompt = e;
               });
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.register('/sw.js').catch(function() {});
+              }
             `,
           }}
         />
@@ -56,7 +60,10 @@ export default function RootLayout({
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         <AuthProvider>
-          <ThemeProvider>{children}</ThemeProvider>
+          <ThemeProvider>
+            {children}
+            <InstallPromptLoader />
+          </ThemeProvider>
         </AuthProvider>
         <Analytics />
       </body>

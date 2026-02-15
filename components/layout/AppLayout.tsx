@@ -4,7 +4,6 @@ import PageHeader from "@/components/layout/PageHeader";
 import SideNav from "@/components/layout/SideNav";
 import PageTransition from "@/components/providers/PageTransition";
 import { OfflineIndicator } from "@/components/ui/OfflineIndicator";
-import { InstallPrompt } from "@/components/ui/InstallPrompt";
 
 type AppLayoutProps = {
   title?: string;
@@ -27,7 +26,6 @@ export default function AppLayout({ title, children }: AppLayoutProps) {
       </div>
       <BottomNav />
       <OfflineIndicator />
-      <InstallPrompt />
     </div>
   );
 }

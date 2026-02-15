@@ -135,3 +135,11 @@ export function InstallPrompt() {
     </div>
   );
 }
+
+/**
+ * Wrapper so the root layout (server component) can render InstallPrompt.
+ * This is a client component re-export for convenience.
+ */
+export function InstallPromptLoader() {
+  return <InstallPrompt />;
+}

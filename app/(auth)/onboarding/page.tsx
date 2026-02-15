@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { createUserProfile, hasUserProfile } from '@/lib/auth';
 import { getErrorMessage } from '@/lib/utils/errorMessages';
+import { triggerWelcomeNotification } from '@/lib/notificationTriggers';
 
 export default function OnboardingPage() {
   const router = useRouter();
@@ -63,6 +64,9 @@ export default function OnboardingPage() {
         weight: parseFloat(formData.weight),
         height: parseFloat(formData.height),
       });
+
+      // Send welcome notification
+      triggerWelcomeNotification(user.uid).catch(() => {});
 
       router.push('/home');
     } catch (err) {

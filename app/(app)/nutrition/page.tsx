@@ -22,6 +22,7 @@ import Modal from '@/components/ui/Modal';
 import SearchBar from '@/components/ui/SearchBar';
 import FilterPanel, { FilterOptions } from '@/components/features/FilterPanel';
 import { searchAndFilterMeals } from '@/lib/utils/search';
+import { triggerMealNotifications } from '@/lib/notificationTriggers';
 
 export default function NutritionPage() {
   const { user } = useAuth();
@@ -114,7 +115,19 @@ export default function NutritionPage() {
       };
       setMeals([newMeal, ...meals]);
       setIsModalOpen(false);
-      if (isOnline) showToast('Meal added successfully!', 'success');
+      if (isOnline) {
+        showToast('Meal added successfully!', 'success');
+        // Check calorie goal notifications
+        const totalCalories = [...meals, newMeal].reduce((sum, m) => {
+          const mealDate = new Date(m.date);
+          const today = new Date();
+          if (mealDate.toDateString() === today.toDateString()) {
+            return sum + (m.calories || 0);
+          }
+          return sum;
+        }, 0);
+        triggerMealNotifications(user.uid, totalCalories).catch(() => {});
+      }
     } catch (error: any) {
       console.error('Error adding meal:', error);
       showToast(getErrorMessage(error, 'Failed to add meal'), 'error');

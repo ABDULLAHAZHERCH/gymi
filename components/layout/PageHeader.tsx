@@ -1,6 +1,7 @@
 'use client';
 
 import UserMenu from './UserMenu';
+import NotificationBell from './NotificationBell';
 
 type PageHeaderProps = {
   title: string;
@@ -22,7 +23,10 @@ export default function PageHeader({ title, subtitle }: PageHeaderProps) {
             <p className="text-xs text-[color:var(--muted-foreground)]">{subtitle}</p>
           ) : null}
         </div>
-        <UserMenu />
+        <div className="flex items-center gap-2">
+          <NotificationBell />
+          <UserMenu />
+        </div>
       </div>
     </header>
   );

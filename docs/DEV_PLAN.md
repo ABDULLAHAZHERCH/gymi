@@ -849,6 +849,194 @@ NEW:
 
 ---
 
+### Phase 6.5: In-App Notifications & Alerts - PLANNED 📋
+**Focus:** Real-time notification system with bell icon in header
+
+#### Overview
+Add a notification bell icon (🔔) to the top-right corner of the header, positioned **before** the account avatar. Notifications are generated locally (client-side) based on user activity and stored in Firestore. No push notifications — everything is in-app.
+
+#### UI Design
+
+**Bell Icon in Header:**
+- Position: `PageHeader.tsx` → between title and `UserMenu`
+- Icon: `Bell` from Lucide React
+- Unread badge: small red dot/count circle on the bell icon
+- Click → opens a dropdown panel (similar to UserMenu pattern)
+- Mobile: full-width dropdown below header
+- Desktop: 320px wide dropdown, right-aligned
+
+**Notification Panel:**
+- Header: "Notifications" title + "Mark all read" button
+- List: scrollable, max 20 most recent notifications
+- Each item: icon + message + relative time ("2h ago", "Yesterday")
+- Unread items: slightly highlighted background
+- Click on notification → navigates to relevant page + marks as read
+- Empty state: "No notifications yet" with subtle icon
+- Footer: "View All" link → `/notifications` page (optional full page)
+
+**Notification Item Design:**
+```
+┌─────────────────────────────────────────────┐
+│ 🏆  You unlocked "7-Day Streak"!     2h ago│
+│     Keep up the momentum.                   │
+├─────────────────────────────────────────────┤
+│ 🎯  Goal deadline approaching        1d ago│
+│     "Lose 5kg" ends in 3 days               │
+├─────────────────────────────────────────────┤
+│ 💪  Weekly summary ready            3d ago │
+│     5 workouts, 12,400 kcal logged          │
+└─────────────────────────────────────────────┘
+```
+
+#### Notification Types
+
+| Type | Icon | Trigger | Message Example | Links To |
+|------|------|---------|-----------------|----------|
+| `achievement` | 🏆 | Achievement unlocked | "You unlocked '7-Day Streak'!" | `/achievements` |
+| `streak` | 🔥 | Streak milestone (7,14,30…) | "You're on a 14-day streak! 🔥" | `/progress` |
+| `streak_warning` | ⚠️ | No workout logged today (evening) | "Don't break your 5-day streak! Log a workout." | `/workouts` |
+| `goal_deadline` | 🎯 | Goal deadline within 3 days | "Goal 'Lose 5kg' ends in 3 days" | `/progress` |
+| `goal_completed` | ✅ | Goal target reached | "You reached your weight goal!" | `/progress` |
+| `weekly_summary` | 📊 | Every Monday (first login of week) | "Weekly summary: 5 workouts, 12,400 kcal" | `/progress` |
+| `personal_record` | 🏅 | New PR on any exercise | "New PR! Bench Press: 100kg" | `/workouts` |
+| `inactivity` | 👋 | No activity for 3+ days | "We miss you! Log a workout to stay on track." | `/workouts` |
+| `welcome` | 🎉 | First login after onboarding | "Welcome to GYMI! Start by logging your first workout." | `/workouts` |
+| `milestone` | ⭐ | Total workout count (10,25,50,100) | "You've completed 50 workouts!" | `/achievements` |
+
+#### Data Model
+
+**Firestore Path:** `/users/{uid}/notifications/{notificationId}`
+
+```typescript
+interface Notification {
+  id: string;
+  type: 'achievement' | 'streak' | 'streak_warning' | 'goal_deadline' 
+      | 'goal_completed' | 'weekly_summary' | 'personal_record' 
+      | 'inactivity' | 'welcome' | 'milestone';
+  title: string;           // Short heading
+  message: string;         // Description text
+  icon: string;            // Emoji
+  read: boolean;           // Has user seen it
+  linkTo?: string;         // Route to navigate on click
+  createdAt: Date;
+  readAt?: Date;           // When it was marked read
+}
+```
+
+**Firestore Security Rules:**
+```
+match /users/{uid}/notifications/{notificationId} {
+  allow read, write: if isAuth() && isOwner(uid);
+}
+```
+
+#### Service Layer: `lib/notifications.ts`
+
+| Function | Description |
+|----------|-------------|
+| `createNotification(uid, data)` | Add a new notification to Firestore |
+| `getNotifications(uid, limit?)` | Fetch notifications (newest first, default 20) |
+| `getUnreadCount(uid)` | Count unread notifications |
+| `markAsRead(uid, notificationId)` | Mark single notification as read |
+| `markAllAsRead(uid)` | Mark all notifications as read |
+| `deleteNotification(uid, notificationId)` | Remove a notification |
+| `deleteOldNotifications(uid, daysOld)` | Cleanup notifications older than N days |
+
+#### Notification Generation: `lib/notificationTriggers.ts`
+
+Centralized logic that checks conditions and creates notifications. Called after key user actions.
+
+| Trigger Point | When Called | What It Checks |
+|---------------|------------|----------------|
+| After workout CRUD | `workouts/page.tsx` after add/edit | Streak milestones, workout count milestones, personal records |
+| After meal CRUD | `nutrition/page.tsx` after add/edit | Calorie goals met for the day |
+| After goal update | `progress/page.tsx` after goal CRUD | Goal completion, approaching deadlines |
+| On dashboard load | `home/page.tsx` on mount | Weekly summary (Monday), inactivity check, streak warnings |
+| After onboarding | `onboarding/page.tsx` on complete | Welcome notification |
+
+**Deduplication:** Before creating a notification, check if the same `type` + relevant identifier already exists for today to prevent duplicates (e.g., don't send "streak warning" twice in one day).
+
+#### Components
+
+| Component | Location | Purpose |
+|-----------|----------|---------|
+| `NotificationBell.tsx` | `components/layout/` | Bell icon with unread badge, opens dropdown |
+| `NotificationPanel.tsx` | `components/layout/` | Dropdown panel with notification list |
+| `NotificationItem.tsx` | `components/layout/` | Single notification row (icon, message, time, read state) |
+
+#### Component Details
+
+**`NotificationBell.tsx`:**
+- Renders `Bell` icon from Lucide
+- Shows red badge with unread count (if > 0, max display "9+")
+- Click toggles `NotificationPanel`
+- Polls unread count on mount + every 60 seconds (or on focus)
+- Close on click-outside and Escape key (same pattern as UserMenu)
+
+**`NotificationPanel.tsx`:**
+- Positioned `absolute right-0 top-full mt-2 w-80 z-50` (same as UserMenu)
+- Header with "Notifications" + "Mark all read" text button
+- Scrollable list with `max-h-96 overflow-y-auto`
+- Maps over notifications → renders `NotificationItem`
+- Empty state with muted text and icon
+- Uses `useEffect` to fetch notifications on open
+
+**`NotificationItem.tsx`:**
+- Props: `notification`, `onRead`, `onClick`
+- Layout: emoji icon (left) + title/message (center) + relative time (right)
+- Unread: `bg-blue-50 dark:bg-blue-950/20` background
+- Read: normal background
+- Click: navigate to `linkTo` route, mark as read, close panel
+- Relative time: "Just now", "5m ago", "2h ago", "Yesterday", "3d ago"
+
+#### Integration into PageHeader
+
+```tsx
+// PageHeader.tsx — updated layout
+<div className="flex items-center gap-2">
+  <NotificationBell />
+  <UserMenu />
+</div>
+```
+
+#### Implementation Plan
+
+**Step 1: Data Layer**
+1. Add `Notification` type to `lib/types/firestore.ts`
+2. Create `lib/notifications.ts` service (CRUD + unread count)
+3. Add Firestore security rules for notifications subcollection
+4. Create `lib/notificationTriggers.ts` (generation logic with dedup)
+
+**Step 2: UI Components**
+5. Create `NotificationItem.tsx` (single notification row)
+6. Create `NotificationPanel.tsx` (dropdown list)
+7. Create `NotificationBell.tsx` (bell icon + badge + toggle)
+
+**Step 3: Header Integration**
+8. Update `PageHeader.tsx` to render `NotificationBell` before `UserMenu`
+
+**Step 4: Wire Triggers**
+9. Add notification checks after workout CRUD (`workouts/page.tsx`)
+10. Add notification checks after meal CRUD (`nutrition/page.tsx`)
+11. Add notification checks on dashboard load (`home/page.tsx`)
+12. Add notification checks after goal actions (`progress/page.tsx`)
+13. Add welcome notification in onboarding (`onboarding/page.tsx`)
+
+**Step 5: Polish**
+14. Add relative time utility function (`lib/utils/timeAgo.ts`)
+15. Add notification cleanup (delete >30 day old notifications)
+16. Test on mobile and desktop
+17. Verify no duplicate notifications
+
+#### Technical Notes
+- **No push notifications** — everything is in-app only (no Firebase Cloud Messaging, no service worker push). This keeps it simple and avoids Blaze plan requirements.
+- **Client-side generation** — notifications are created by the client after actions, not by a server/cloud function. This means they only generate when the user is active in the app.
+- **Polling for unread count** — simple interval-based refresh (60s) rather than real-time Firestore listener to minimize reads.
+- **Cleanup** — auto-delete notifications older than 30 days to prevent unbounded growth.
+- **Read state** — individual and bulk "mark all read" support.
+
+---
+
 ### Phase 6.3: Social Features - FUTURE WORK 💡
 
 **Deferred to future versions. Includes:**

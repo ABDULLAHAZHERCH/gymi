@@ -39,6 +39,11 @@ service cloud.firestore {
       match /achievements/{achievementId} {
         allow read, write: if isAuth() && isOwner(uid);
       }
+
+      // Subcollections: notifications
+      match /notifications/{notificationId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
     }
 
     // Public data (if needed in future)

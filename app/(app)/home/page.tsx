@@ -17,6 +17,7 @@ import {
   ChevronRight,
   CalendarDays,
 } from 'lucide-react';
+import { triggerDashboardNotifications } from '@/lib/notificationTriggers';
 
 export default function Home() {
   const { user } = useAuth();
@@ -35,6 +36,9 @@ export default function Home() {
         ]);
         setProfile(userProfile);
         setStats(dashboardStats);
+
+        // Trigger dashboard notifications (streak warnings, weekly summary, etc.)
+        triggerDashboardNotifications(user.uid).catch(() => {});
       } catch (error) {
         console.error('Error fetching data:', error);
       } finally {

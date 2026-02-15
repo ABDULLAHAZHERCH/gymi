@@ -12,6 +12,7 @@ import { getInsights, type Insight } from '@/lib/reports';
 import { calculateStreaks } from '@/lib/achievements';
 import { getWorkouts } from '@/lib/workouts';
 import { Goal, WeightLog, Achievement } from '@/lib/types/firestore';
+import { triggerGoalCompletedNotification } from '@/lib/notificationTriggers';
 import AppLayout from '@/components/layout/AppLayout';
 import GoalCard from '@/components/features/GoalCard';
 import GoalForm from '@/components/features/GoalForm';
@@ -185,12 +186,16 @@ export default function ProfilePage() {
 
     try {
       await completeGoal(user.uid, goalId);
+      const completedGoal = goals.find((g) => g.id === goalId);
       setGoals(
         goals.map((g) =>
           g.id === goalId ? { ...g, status: 'completed' as const, completedAt: new Date() } : g
         )
       );
       showToast('Goal completed! 🎉', 'success');
+      if (completedGoal) {
+        triggerGoalCompletedNotification(user.uid, completedGoal.title).catch(() => {});
+      }
     } catch (error) {
       console.error('Error completing goal:', error);
       showToast(getErrorMessage(error, 'Failed to complete goal'), 'error');

@@ -129,3 +129,29 @@ export interface Achievement {
   id: string;
   createdAt: Date;
 }
+
+/** Notification types */
+export type NotificationType =
+  | 'achievement'
+  | 'streak'
+  | 'streak_warning'
+  | 'goal_deadline'
+  | 'goal_completed'
+  | 'weekly_summary'
+  | 'personal_record'
+  | 'inactivity'
+  | 'welcome'
+  | 'milestone';
+
+/** Notification - stored at /users/{uid}/notifications/{notificationId} */
+export interface Notification {
+  id: string;
+  type: NotificationType;
+  title: string;
+  message: string;
+  icon: string; // emoji
+  read: boolean;
+  linkTo?: string; // route to navigate on click
+  createdAt: Date;
+  readAt?: Date;
+}

@@ -22,6 +22,7 @@ import Modal from '@/components/ui/Modal';
 import SearchBar from '@/components/ui/SearchBar';
 import FilterPanel, { FilterOptions } from '@/components/features/FilterPanel';
 import { searchAndFilterWorkouts } from '@/lib/utils/search';
+import { triggerWorkoutNotifications } from '@/lib/notificationTriggers';
 
 export default function WorkoutsPage() {
   const { user } = useAuth();
@@ -115,7 +116,10 @@ export default function WorkoutsPage() {
       };
       setWorkouts([newWorkout, ...workouts]);
       setIsModalOpen(false);
-      if (isOnline) showToast('Workout added successfully!', 'success');
+      if (isOnline) {
+        showToast('Workout added successfully!', 'success');
+        triggerWorkoutNotifications(user.uid).catch(() => {});
+      }
     } catch (error: any) {
       console.error('Error adding workout:', error);
       showToast(getErrorMessage(error, 'Failed to add workout'), 'error');

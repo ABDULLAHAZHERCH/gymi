@@ -91,7 +91,7 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 
 ## 🧠 AI Coach Backend
 
-The form correction feature requires a separate FastAPI server. See [BACKEND_INTEGRATION_QUICK_START.md](BACKEND_INTEGRATION_QUICK_START.md) for setup instructions.
+The form correction feature requires a separate FastAPI server. See [BACKEND_Repository](https://github.com/shahmir2004/exercise-form-correction) for details.
 
 ## � Full Documentation
 

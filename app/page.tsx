@@ -162,9 +162,15 @@ export default function LandingPage() {
         <div className="mx-auto max-w-5xl px-6 py-8">
           <div className="flex flex-col items-center justify-between gap-4 sm:flex-row">
             <span className="text-sm font-bold tracking-tight">GYMI</span>
-            <p className="text-xs text-[color:var(--muted-foreground)]">
-              &copy; {new Date().getFullYear()} GYMI. Built for fitness enthusiasts.
-            </p>
+            <div className="flex items-center gap-4 text-xs text-[color:var(--muted-foreground)]">
+              <Link href="/privacy" className="transition-colors hover:text-[color:var(--foreground)]">
+                Privacy
+              </Link>
+              <Link href="/terms" className="transition-colors hover:text-[color:var(--foreground)]">
+                Terms
+              </Link>
+              <span>&copy; {new Date().getFullYear()} GYMI</span>
+            </div>
           </div>
         </div>
       </footer>

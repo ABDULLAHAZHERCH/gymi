@@ -85,13 +85,13 @@ export default function RegisterPage() {
   const isDisabled = loading || googleLoading;
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-6">
       {/* Header */}
       <header className="space-y-2 text-center">
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 shadow-lg shadow-blue-500/25">
-          <span className="text-2xl font-black text-white">G</span>
+        <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-[color:var(--foreground)] shadow-lg">
+          <span className="text-xl font-black text-[color:var(--background)]">G</span>
         </div>
-        <h1 className="text-2xl font-bold tracking-tight">Create your account</h1>
+        <h1 className="text-xl font-bold tracking-tight sm:text-2xl">Create your account</h1>
         <p className="text-sm text-[color:var(--muted-foreground)]">
           Start your personalized fitness journey in minutes
         </p>

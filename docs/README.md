@@ -58,7 +58,7 @@ GYMI is a full-stack fitness web application that lets users track workouts, log
 
 | Package | Purpose |
 |---|---|
-| `firebase` (10.x) | Auth (email/password), Firestore (NoSQL database) |
+| `firebase` (10.x) | Auth (email/password + Google Sign-In), Firestore (NoSQL database) |
 | `idb` | IndexedDB wrapper for offline data storage |
 
 ### UI & UX
@@ -134,7 +134,8 @@ GYMI is a full-stack fitness web application that lets users track workouts, log
 ## Features
 
 ### 1. Workout Tracking
-- Log exercises with sets, reps, weight (kg), duration, and notes
+- Log exercises with sets, reps, weight, duration, and notes
+- **Imperial unit support** — weight displayed in kg or lbs based on user preference
 - Edit and delete entries with confirmation dialogs
 - View workout history sorted by date (newest first)
 - Search by exercise name, filter by date range
@@ -158,6 +159,7 @@ GYMI is a full-stack fitness web application that lets users track workouts, log
 - Interactive SVG line/area chart with Catmull-Rom curve smoothing
 - Gradient fill, hover tooltips, grid lines, target weight line
 - Stats row: current weight, change, target
+- **Unit-aware display** — all values shown in user's preferred unit (kg/lbs)
 
 ### 5. Progress & Analytics
 - **Achievements & Badges** — Unlock milestones for streaks, workout counts, weight changes, personal records
@@ -185,9 +187,29 @@ GYMI is a full-stack fitness web application that lets users track workouts, log
 - Sync queue with automatic retry on reconnect
 - Offline fallback page
 
-### 9. Data Export
+### 9. In-App Notifications
+- **Bell icon** in header with unread badge (red dot/count, max "9+")
+- **10 notification types:** achievement, streak, streak warning, goal deadline, goal completed, weekly summary, personal record, inactivity, welcome, milestone
+- **Dropdown panel** — scrollable list (max 20), mark-all-read, relative timestamps
+- **Auto-triggers** — notifications created after workout/meal CRUD, goal actions, dashboard load, onboarding
+- **Deduplication** — prevents duplicate notifications on same day
+- **In-memory caching** with TTL and prefix-based invalidation
+
+### 10. Imperial Unit Support
+- Toggle between **metric** (kg, cm) and **imperial** (lbs, ft/in) units
+- Preference stored in Firestore user profile, loaded via `UnitProvider` React context
+- **Always stores metric internally** — converts for display only
+- Applied across: onboarding, workouts, nutrition, goals, weight chart, dashboard stats, reports, notifications, data export
+
+### 11. Data Export
 - Export workouts, meals, or weight logs as CSV
 - Full backup as JSON with metadata and versioning
+- **Unit-aware CSV headers** — headers and values adjust to user's unit preference
+
+### 12. Privacy & Legal
+- **Privacy Policy** page (`/privacy`) — 10 sections covering data collection, storage, third-party services, user rights
+- **Terms of Service** page (`/terms`) — 12 sections covering acceptable use, health disclaimer, liability
+- Links in landing page footer and auth layout footer
 
 ---
 
@@ -201,10 +223,10 @@ gymi/
 │   ├── icon.svg                  # Favicon
 │   ├── globals.css               # Global styles & CSS custom properties
 │   ├── (auth)/                   # Auth route group (no layout shell)
-│   │   ├── layout.tsx            # Minimal auth layout
-│   │   ├── login/page.tsx        # Login page
-│   │   ├── register/page.tsx     # Register page
-│   │   └── onboarding/page.tsx   # Post-registration onboarding wizard
+│   │   ├── layout.tsx            # Auth layout (gradient bg, footer with Privacy/Terms links)
+│   │   ├── login/page.tsx        # Login page (Google + email/password, password visibility toggle)
+│   │   ├── register/page.tsx     # Register page (Google + password strength meter)
+│   │   └── onboarding/page.tsx   # Post-registration onboarding wizard (unit toggle)
 │   └── (app)/                    # Authenticated route group
 │       ├── layout.tsx            # Protected layout (auth guard, toast, error boundary)
 │       ├── home/page.tsx         # Dashboard
@@ -212,8 +234,11 @@ gymi/
 │       ├── nutrition/page.tsx    # Meal logging
 │       ├── coach/page.tsx        # AI Coach with camera
 │       ├── progress/page.tsx     # Goals, weight chart, achievements, insights
-│       ├── account/page.tsx      # Account settings
+│       ├── account/page.tsx      # Account settings (unit preference, profile, export)
 │       └── achievements/page.tsx # All achievements browser
+│
+│   ├── privacy/page.tsx          # Privacy Policy (public)
+│   └── terms/page.tsx            # Terms of Service (public)
 │
 ├── components/
 │   ├── features/                 # Domain-specific components
@@ -243,13 +268,17 @@ gymi/
 │   │   ├── AppLayout.tsx         # Main app shell (sidebar + header + bottom nav)
 │   │   ├── BottomNav.tsx         # Mobile bottom navigation
 │   │   ├── SideNav.tsx           # Desktop sidebar navigation
-│   │   ├── PageHeader.tsx        # Top header with title + user menu
+│   │   ├── PageHeader.tsx        # Top header with GYMI branding + notifications + user menu
 │   │   ├── UserMenu.tsx          # Avatar dropdown (settings, theme, logout)
+│   │   ├── NotificationBell.tsx  # Bell icon with unread badge (polls every 60s)
+│   │   ├── NotificationPanel.tsx # Notification dropdown panel (max 20 items)
+│   │   ├── NotificationItem.tsx  # Single notification row (icon, message, relative time)
 │   │   └── MobileLayout.tsx      # Mobile-specific layout wrapper
 │   │
 │   ├── providers/                # Context providers & wrappers
 │   │   ├── AuthProvider.tsx      # Firebase auth context
 │   │   ├── ProtectedRoute.tsx    # Auth guard (redirects to landing if unauthenticated)
+│   │   ├── UnitProvider.tsx      # Unit system context (metric/imperial preference)
 │   │   ├── ThemeProvider.tsx     # Theme context
 │   │   ├── ErrorBoundary.tsx     # React error boundary with fallback UI
 │   │   └── PageTransition.tsx    # Page transition animation
@@ -268,14 +297,17 @@ gymi/
 │
 ├── lib/                          # Business logic & services
 │   ├── firebase.ts               # Firebase app initialization
-│   ├── auth.ts                   # Auth functions (register, login, logout, profile CRUD)
+│   ├── auth.ts                   # Auth functions (register, login, logout, Google sign-in, profile CRUD)
 │   ├── workouts.ts               # Workout CRUD operations
 │   ├── meals.ts                  # Meal CRUD + daily calorie/macro totals
 │   ├── goals.ts                  # Goal CRUD + progress calculation
 │   ├── weightLogs.ts             # Weight log CRUD + change tracking
-│   ├── stats.ts                  # Dashboard aggregation (streak, counts, favorites)
+│   ├── stats.ts                  # Dashboard aggregation (streak, counts, favorites) — unit-aware
 │   ├── achievements.ts           # Achievement unlock logic + milestone progress
-│   ├── reports.ts                # Weekly/monthly report generation + insights
+│   ├── reports.ts                # Weekly/monthly report generation + insights — unit-aware
+│   ├── notifications.ts          # Notification CRUD + unread count + caching
+│   ├── notificationTriggers.ts   # Notification generation logic with deduplication
+│   ├── cache.ts                  # In-memory cache with TTL + prefix invalidation
 │   ├── mealTemplates.ts          # Meal template CRUD
 │   ├── types/firestore.ts        # TypeScript interfaces for all Firestore documents
 │   ├── contexts/ToastContext.tsx  # Toast notification context
@@ -291,8 +323,10 @@ gymi/
 │   ├── data/
 │   │   └── exercises.ts          # Exercise library dataset (20+ exercises)
 │   └── utils/
+│       ├── units.ts              # kg/lbs, cm/ft-in conversion utilities
+│       ├── timeAgo.ts            # Relative time formatting ("2h ago", "Yesterday")
 │       ├── errorMessages.ts      # Firebase error code → user-friendly message
-│       ├── export.ts             # CSV/JSON export utilities
+│       ├── export.ts             # CSV/JSON export utilities — unit-aware
 │       ├── search.ts             # Search and filter functions
 │       └── validation.ts         # Form validation rules
 │
@@ -304,6 +338,7 @@ gymi/
 │   ├── manifest.json             # PWA web app manifest
 │   ├── sw.js                     # Service worker (cache-first + network-first)
 │   ├── offline.html              # Offline fallback page
+│   ├── logo-120.png              # GCP OAuth consent screen logo (120×120)
 │   ├── icon-192.svg              # PWA icon (192×192)
 │   ├── icon-512.svg              # PWA icon (512×512)
 │   └── icon-maskable.svg         # Maskable PWA icon
@@ -337,6 +372,7 @@ All user data is stored in Firestore under `/users/{uid}/` with per-user isolati
 /users/{uid}/weightLogs/{id}      → WeightLog
 /users/{uid}/achievements/{id}    → Achievement
 /users/{uid}/mealTemplates/{id}   → MealTemplate
+/users/{uid}/notifications/{id}   → Notification
 ```
 
 ### Entity Schemas
@@ -349,6 +385,7 @@ All user data is stored in Firestore under `/users/{uid}/` with per-user isolati
 | `goal` | enum | Fitness goal (build strength / lose weight / improve endurance / stay consistent) |
 | `weight` | number | Current weight in kg |
 | `height` | number | Height in cm |
+| `unitSystem` | enum? | `'metric'` or `'imperial'` (default: `'metric'`) |
 | `createdAt` | Date | Profile creation timestamp |
 | `updatedAt` | Date | Last update timestamp |
 
@@ -410,6 +447,18 @@ All user data is stored in Firestore under `/users/{uid}/` with per-user isolati
 | `milestone` | number | Milestone value (e.g., 7 for 7-day streak) |
 | `achievedAt` | Date | When the achievement was unlocked |
 
+#### Notification
+| Field | Type | Description |
+|---|---|---|
+| `type` | enum | achievement / streak / streak_warning / goal_deadline / goal_completed / weekly_summary / personal_record / inactivity / welcome / milestone |
+| `title` | string | Short heading |
+| `message` | string | Description text |
+| `icon` | string | Emoji icon |
+| `read` | boolean | Has user seen it |
+| `linkTo` | string? | Route to navigate on click |
+| `createdAt` | Date | When notification was created |
+| `readAt` | Date? | When it was marked read |
+
 ---
 
 ## Authentication & Security
@@ -423,7 +472,8 @@ Landing (/) ──► Register (/register) ──► Onboarding (/onboarding) �
                                     (skips onboarding if profile exists)
 ```
 
-- **Provider:** Firebase Authentication (email/password)
+- **Provider:** Firebase Authentication (email/password + **Google Sign-In** via `GoogleAuthProvider`)
+- **Google OAuth:** `signInWithPopup` — auto-detects new users, routes to onboarding if no profile exists
 - **State Management:** `AuthProvider` context wraps the entire app; exposes `user` and `loading`
 - **Route Protection:** `ProtectedRoute` component redirects unauthenticated users to `/`
 - **Session:** Firebase manages session tokens automatically; persists across browser restarts
@@ -453,7 +503,7 @@ No user can read or modify another user's data.
 - **Static assets** → Cache-first strategy (JS, CSS, fonts, images)
 - **API/navigation** → Network-first with cache fallback
 - **Offline fallback** → Serves `offline.html` when network and cache both miss
-- **Version management** → Cache versioned as `gymi-v2`; old caches auto-cleaned
+- **Version management** → Cache versioned as `gymi-v3`; old caches auto-cleaned
 
 ### IndexedDB Offline Store
 
@@ -475,15 +525,17 @@ No user can read or modify another user's data.
 | Route | Access | Description |
 |---|---|---|
 | `/` | Public | Landing page — hero, features, CTA; redirects to `/home` if authenticated |
-| `/login` | Public | Email/password login |
-| `/register` | Public | New account registration |
-| `/onboarding` | Public | Post-registration profile setup (goal, weight, height) |
+| `/login` | Public | Email/password + Google Sign-In login |
+| `/register` | Public | New account registration (Google + password strength meter) |
+| `/onboarding` | Public | Post-registration profile setup (goal, weight, height, unit preference) |
+| `/privacy` | Public | Privacy Policy page |
+| `/terms` | Public | Terms of Service page |
 | `/home` | Protected | Dashboard with stats, activity feed, quick actions |
 | `/workouts` | Protected | Workout log — CRUD, search, filters, exercise library |
 | `/nutrition` | Protected | Meal log — CRUD, search, filters, templates |
 | `/coach` | Protected | AI Coach — camera feed, pose detection, form feedback |
 | `/progress` | Protected | Goals, weight chart, achievements, streak, insights |
-| `/account` | Protected | Account settings (profile edit, data export, danger zone) |
+| `/account` | Protected | Account settings (profile edit, unit preference, data export, danger zone) |
 | `/achievements` | Protected | Full achievements gallery with filters |
 
 ### Route Groups
@@ -493,9 +545,10 @@ No user can read or modify another user's data.
 
 ### Navigation
 
-- **Mobile (< 768px):** Sticky bottom nav bar with 5 items (Home, Workouts, Coach, Nutrition, Progress)
+- **Mobile (< 768px):** Sticky bottom nav bar with 5 items (Home, Workouts, Coach, Nutrition, Profile)
 - **Desktop (≥ 768px):** Fixed left sidebar with the same links plus account access
 - **User Menu:** Top-right avatar dropdown → Account Settings, Theme toggle, Log out
+- **Notification Bell:** Bell icon with unread badge, opens dropdown panel with notification list
 
 ---
 
@@ -508,6 +561,7 @@ All service functions are `async` and interact with Firestore. They accept a `ui
 |---|---|
 | `registerUser(name, email, password)` | Create Firebase user |
 | `loginUser(email, password)` | Sign in with email/password |
+| `signInWithGoogle()` | Sign in with Google OAuth (returns `{ user, isNewUser }`) |
 | `logoutUser()` | Sign out |
 | `createUserProfile(uid, data)` | Create Firestore profile doc |
 | `getUserProfile(uid)` | Fetch user profile |
@@ -570,7 +624,7 @@ All service functions are `async` and interact with Firestore. They accept a `ui
 | `getRecentEntries(uid, count?)` | Latest workouts + meals combined |
 | `getWorkoutStreak(uid)` | Consecutive workout days |
 | `getMonthlyStats(uid)` | Monthly aggregates |
-| `getDashboardStats(uid)` | All dashboard data in one call |
+| `getDashboardStats(uid, unitSystem?)` | All dashboard data in one call (unit-aware) |
 
 ### `lib/achievements.ts`
 | Function | Description |
@@ -590,6 +644,33 @@ All service functions are `async` and interact with Firestore. They accept a `ui
 | `getWeeklyNutritionReport(uid)` | Weekly nutrition summary |
 | `getMonthlyReport(uid)` | Full monthly report |
 | `getInsights(uid)` | Smart contextual insights |
+
+### `lib/notifications.ts`
+| Function | Description |
+|---|---|
+| `createNotification(uid, data)` | Add a new notification to Firestore |
+| `getNotifications(uid, limit?)` | Fetch notifications (newest first, default 20) |
+| `getUnreadCount(uid)` | Count unread notifications |
+| `markAsRead(uid, notificationId)` | Mark single notification as read |
+| `markAllAsRead(uid)` | Mark all notifications as read |
+| `deleteNotification(uid, notificationId)` | Remove a notification |
+| `deleteOldNotifications(uid, daysOld)` | Cleanup notifications older than N days |
+
+### `lib/notificationTriggers.ts`
+| Function | Description |
+|---|---|
+| `checkWorkoutNotifications(uid, unitSystem?)` | Check for streak, milestone, PR notifications after workout CRUD |
+| `checkMealNotifications(uid)` | Check for calorie goal notifications after meal CRUD |
+| `checkDashboardNotifications(uid)` | Weekly summary, inactivity, streak warnings on dashboard load |
+| `checkGoalNotifications(uid)` | Goal completion and deadline notifications |
+| `createWelcomeNotification(uid)` | Welcome notification after onboarding |
+
+### `lib/cache.ts`
+| Function | Description |
+|---|---|
+| `cacheGet(key)` | Get cached value (returns `undefined` if expired) |
+| `cacheSet(key, value, ttlMs?)` | Set cached value with optional TTL (default 5 min) |
+| `cacheInvalidate(keyOrPrefix)` | Invalidate exact key or prefix (if ends with `:`) |
 
 ### `lib/mealTemplates.ts`
 | Function | Description |
@@ -689,7 +770,7 @@ The app is deployed on Vercel with automatic deploys from the `main` branch on G
 - **Production URL:** [gymii.vercel.app](https://gymii.vercel.app)
 - **Framework:** Auto-detected as Next.js
 - **Build Command:** `next build`
-- **Output:** Static (all 14 pages pre-rendered)
+- **Output:** Static (all 16 pages pre-rendered)
 - **Environment Variables:** Configured in Vercel Dashboard → Settings → Environment Variables
 
 ### Build Output
@@ -704,9 +785,11 @@ Route (app)             Size
 /progress               Progress tracking
 /account                Account settings
 /achievements           Achievement gallery
-/login                  Login
-/register               Register
-/onboarding             Onboarding wizard
+/privacy                Privacy Policy
+/terms                  Terms of Service
+/login                  Login (Google + email/password)
+/register               Register (Google + password strength)
+/onboarding             Onboarding wizard (unit toggle)
 /icon.svg               Favicon
 ```
 

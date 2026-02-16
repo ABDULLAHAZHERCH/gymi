@@ -7,12 +7,16 @@ We are building a **Responsive Web Application** called **GYMI**.
 - **Platform:** Works as a native-feel app on Mobile, and a full dashboard on Desktop.
 
 ## 2. Tech Stack
-- **Framework:** Next.js 14+ (App Router, TypeScript).
-- **Styling:** Tailwind CSS.
+- **Framework:** Next.js 16.1.6 (App Router, TypeScript, React 19.2.3).
+- **Styling:** Tailwind CSS v4 (PostCSS plugin).
 - **Icons:** Lucide React.
 - **Backend:** Firebase (Auth, Firestore).
   - ⚠️ **Storage disabled** - requires credit card/Blaze plan
+  - **Auth Providers:** Email/Password + Google Sign-In (OAuth)
 - **AI:** TensorFlow.js / MediaPipe.
+- **PWA:** Service Worker, IndexedDB (via `idb`), Web App Manifest.
+- **Caching:** In-memory Map with TTL + prefix invalidation (`lib/cache.ts`).
+- **Deployment:** Vercel (https://gymii.vercel.app).
 
 ## 3. Design System & UI Rules (Responsive Strategy)
 - **Theme:** Minimalist, Black & White (Professional).
@@ -49,6 +53,18 @@ We are building a **Responsive Web Application** called **GYMI**.
 **Frontend:**
 - [x] Login page with Firebase authentication.
 - [x] Register page with Firebase user creation.
+- [x] **Google Sign-In** via `GoogleAuthProvider` + `signInWithPopup`.
+  - `signInWithGoogle()` in `lib/auth.ts` — returns `{ user, isNewUser }`
+  - Auto-detects new users (checks `hasUserProfile`) → routes to onboarding
+- [x] **Auth Page Redesign:**
+  - Branded logo badge, centered layout
+  - Google sign-in/sign-up buttons with official SVG logo
+  - Email/password inputs with Mail/Lock/User icons (Lucide)
+  - **Password visibility toggle** (Eye/EyeOff icons)
+  - **Password strength meter** on register page (3-bar indicator: Weak/Fair/Strong + live checklist)
+  - Loader spinner states, `active:scale` press feedback
+  - Styled error alerts, proper `autoComplete` attributes
+  - Auth layout: subtle gradient background, refined card, footer with Privacy · Terms links
 - [x] Onboarding wizard (Goal, Weight, Height) with Firestore storage.
 - [x] Onboarding guard: Skip if profile already exists.
 - [x] AuthProvider context for user state management.
@@ -66,6 +82,7 @@ We are building a **Responsive Web Application** called **GYMI**.
 - [x] Firestore security rules published.
 - [x] Firebase setup guide (`FIREBASE_SETUP.md`).
 - [x] User profile schema defined and tested.
+- [x] Google OAuth configured in GCP Console (consent screen, logo, privacy/terms URLs).
 
 **Data Structure:**
 ```
@@ -331,20 +348,21 @@ User Action → UI Component → Service Layer → Firestore
   - Target weight line visualization
   - Weight tracker now integrated into `/profile` page
 
-- [ ] **Achievements & Milestones** - DEFERRED
-  - Streak milestones (7, 30, 100 days)
-  - Total workout milestones (10, 50, 100)
-  - Weight loss/gain milestones
+- [x] **Achievements & Milestones** - COMPLETE ✅ *(Implemented in Phase 6.2)*
+  - Streak milestones (7, 14, 30, 60, 100 consecutive days)
+  - Total workout milestones (10, 25, 50, 100)
+  - Weight milestones (5kg, 10kg, 15kg change)
   - Personal records tracking (PRs)
-  - Achievement badges display
-  - Share achievements (social)
+  - Achievement badges display on profile + `/achievements` page
+  - See Phase 6.2 for full details
 
-- [ ] **Weekly/Monthly Reports** - DEFERRED
-  - Generate workout summary reports
-  - Nutrition summary reports
-  - Progress insights and recommendations
-  - Email weekly summary (optional)
-  - Download PDF reports
+- [x] **Weekly/Monthly Reports** - COMPLETE ✅ *(Implemented in Phase 6.2)*
+  - Weekly workout summary reports
+  - Weekly nutrition summary reports
+  - Monthly progress reports
+  - Smart insights and recommendations
+  - See Phase 6.2 for full details
+  - PDF export & email summary deferred
 
 #### 4.5.3: Advanced Features - COMPLETE ✅
 **Focus:** Add power-user features
@@ -422,12 +440,13 @@ User Action → UI Component → Service Layer → Firestore
   - Compress assets
   - Use SVGs for icons
 
-- [ ] **Caching Strategy**
-  - Implement service worker (PWA)
-  - Cache API responses
-  - Offline mode support
-  - Background sync for offline entries
-  - Cache invalidation strategy
+- [x] **Caching Strategy** - PARTIALLY COMPLETE ✅
+  - [x] Implement service worker (PWA) — `public/sw.js` with 3-tier caching
+  - [x] Cache API responses — network-first strategy in SW
+  - [x] Offline mode support — IndexedDB + sync queue (Phase 6.1)
+  - [x] Background sync for offline entries — `lib/offline/syncManager.ts`
+  - [x] Cache invalidation strategy — In-memory Map with TTL + prefix invalidation (`lib/cache.ts`)
+  - [ ] Redis or distributed cache (not needed for current scale)
 
 #### 4.5.5: Error Handling & Monitoring
 **Focus:** Improve reliability and debugging
@@ -849,8 +868,34 @@ NEW:
 
 ---
 
-### Phase 6.5: In-App Notifications & Alerts - PLANNED 📋
+### Phase 6.5: In-App Notifications & Alerts - COMPLETE ✅
 **Focus:** Real-time notification system with bell icon in header
+
+**Implementation Status:** All steps complete and deployed.
+
+#### What Was Built:
+
+**Data Layer:**
+- [x] `Notification` type added to `lib/types/firestore.ts`
+- [x] `lib/notifications.ts` — full CRUD service (create, get, unread count, mark read, mark all read, delete, cleanup old)
+- [x] `lib/notificationTriggers.ts` — centralized trigger logic with deduplication
+- [x] In-memory caching with prefix-based invalidation for notification queries
+- [x] **Bug Fix:** Cache key mismatch fixed — all `cacheInvalidate` calls use trailing colon for prefix matching (`notifications:${uid}:`)
+
+**UI Components:**
+- [x] `NotificationBell.tsx` — Bell icon with unread badge (red dot/count, max "9+"), polling every 60s
+- [x] `NotificationPanel.tsx` — Dropdown panel (320px, scrollable, max 20 items, mark-all-read, empty state)
+- [x] `NotificationItem.tsx` — Single row (emoji icon, title/message, relative time, read/unread styling)
+
+**Trigger Wiring:**
+- [x] After workout CRUD → streak milestones, workout count milestones, personal records
+- [x] After meal CRUD → calorie goals
+- [x] On dashboard load → weekly summary (Monday), inactivity check, streak warnings
+- [x] After goal actions → goal completion, approaching deadlines
+- [x] After onboarding → welcome notification
+
+**Header Integration:**
+- [x] `NotificationBell` rendered before `UserMenu` in `PageHeader.tsx`
 
 #### Overview
 Add a notification bell icon (🔔) to the top-right corner of the header, positioned **before** the account avatar. Notifications are generated locally (client-side) based on user activity and stored in Firestore. No push notifications — everything is in-app.
@@ -1063,6 +1108,81 @@ Centralized logic that checks conditions and creates notifications. Called after
 
 ---
 
+### Phase 7: Recent Enhancements - COMPLETE ✅
+
+**Goal:** Polish UX, add Google Auth, imperial units, legal pages, and header refinements
+
+#### 7.1: Imperial Unit Support - COMPLETE ✅
+**Focus:** Allow users to switch between metric (kg/cm) and imperial (lbs/ft-in) units
+
+**Strategy:** Always store metric internally in Firestore; convert for display only.
+
+**Implementation:**
+- [x] Created `lib/utils/units.ts` — Central conversion utility
+  - `kgToLbs`, `lbsToKg`, `cmToFtIn`, `ftInToCm`
+  - `displayWeight(kg, unitSystem)` → "70 kg" or "154.3 lbs"
+  - `displayHeight(cm, unitSystem)` → "175 cm" or "5'9\""
+  - `getWeightInUnit`, `weightToKg`, `weightUnit`, `heightUnit`
+  - `displayWeightChange(kg, unitSystem)` → "+2.5 kg" or "+5.5 lbs"
+  - Type: `UnitSystem = 'metric' | 'imperial'`
+
+- [x] Created `components/providers/UnitProvider.tsx` — React context
+  - Loads `unitSystem` from Firestore user profile on mount
+  - `useUnits()` hook returns `{ unitSystem, setUnitSystem, loading }`
+  - `setUnitSystem()` persists preference to Firestore
+  - Wrapped in `app/layout.tsx`
+
+- [x] Added `unitSystem?: 'metric' | 'imperial'` to `UserProfile` type
+
+**App-Wide Integration:**
+- [x] **Onboarding** — Unit toggle switch, ft/in inputs for imperial, converts to metric before store
+- [x] **Account page** — Unit preference toggle section
+- [x] **Progress page** — Unit-aware weight logging + display
+- [x] **WeightChart** — All values/labels/tooltips converted
+- [x] **WorkoutForm + WorkoutCard** — Weight label + display in user's preferred unit
+- [x] **GoalForm + GoalCard** — Target weight label + display
+- [x] **Dashboard stats** (`lib/stats.ts`) — `getDashboardStats(uid, unitSystem)`, cache key includes unit
+- [x] **Notification triggers** — PR messages use `displayWeight()`
+- [x] **Reports/Insights** — Weight insights use `displayWeightChange()`
+- [x] **Data Export** — CSV headers dynamic ("Weight (kg)" vs "Weight (lbs)"), values converted
+
+#### 7.2: Google Sign-In & Auth Redesign - COMPLETE ✅
+**Focus:** Add Google OAuth and modernize auth pages
+
+*(Details in Phase 3 update above)*
+
+**Key Files Modified:**
+- `lib/auth.ts` — Added `GoogleAuthProvider`, `signInWithPopup`, `signInWithGoogle()`
+- `app/(auth)/login/page.tsx` — Complete redesign
+- `app/(auth)/register/page.tsx` — Complete redesign with password strength meter
+- `app/(auth)/layout.tsx` — Gradient background, footer links
+
+#### 7.3: Header Refinement - COMPLETE ✅
+**Focus:** Simplify page header
+
+- [x] Removed page-specific title (`{title}`) from `PageHeader.tsx`
+- [x] Header now only shows "GYMI" branding (larger, bolder text)
+- [x] `title` prop still accepted but not rendered (backward compatible)
+
+#### 7.4: Privacy Policy & Terms of Service - COMPLETE ✅
+**Focus:** Legal pages required for Google OAuth consent screen
+
+- [x] Created `app/privacy/page.tsx` — Comprehensive privacy policy (10 sections)
+  - Data collection, usage, storage (Firebase), third-party services
+  - User rights, cookies, children's privacy, contact info
+- [x] Created `app/terms/page.tsx` — Comprehensive terms of service (12 sections)
+  - Acceptance, service description, user accounts, acceptable use
+  - Content ownership, health disclaimer, liability limitation, termination
+- [x] Both pages: consistent nav header + footer, cross-links between them
+- [x] Added Privacy/Terms links to landing page footer (`app/page.tsx`)
+- [x] Added Privacy/Terms links to auth layout footer (`app/(auth)/layout.tsx`)
+
+#### 7.5: GCP OAuth Assets - COMPLETE ✅
+- [x] Generated `public/logo-120.png` (120×120 PNG, ~1.9KB) from `app/icon.svg` using `sharp`
+- [x] For upload to GCP OAuth consent screen
+
+---
+
 ## Implementation Timeline
 
 **Week 1: Offline Support (PWA)**
@@ -1097,75 +1217,133 @@ Centralized logic that checks conditions and creates notifications. Called after
 ## 5. Current Status Summary
 
 **✅ COMPLETE & PRODUCTION-READY:**
-- Next.js 16 with TypeScript setup
-- Firebase Auth & Firestore
-- Responsive mobile-first design
-- Workout logging (CRUD)
-- Nutrition logging (CRUD)
-- Weight tracking with charts
-- Goal management (4 types)
-- Dashboard with stats
-- Search & filtering
-- Dark mode support
-- Error boundaries
-- Toast notifications
-- Form validation
-- All security rules configured
+- Next.js 16.1.6 with TypeScript strict + React 19.2.3
+- Firebase Auth (Email/Password + Google Sign-In) & Firestore
+- Responsive mobile-first design with dark mode
+- Workout logging (CRUD) with exercise library
+- Nutrition logging (CRUD) with meal templates
+- Weight tracking with charts (bar chart, trend indicators)
+- Goal management (4 types: weight, workout frequency, calorie, macro)
+- Dashboard with comprehensive stats
+- Search & filtering (date range, type, calorie, notes)
+- Toast notifications, form validation, error boundaries
+- Achievements system (6 categories, badges, streaks)
+- Weekly/monthly reports with smart insights
+- In-app notification system (bell icon, 10 notification types, triggers)
+- Offline support (PWA): Service Worker, IndexedDB, sync manager
+- Imperial unit support (lbs/ft-in with UnitProvider context)
+- Google Sign-In with redesigned auth pages
+- Password visibility toggle + password strength meter
+- Privacy Policy & Terms of Service pages
+- Data export (CSV/JSON) with unit-aware headers
+- In-memory caching with TTL + prefix invalidation
+- All security rules configured & deployed
 
 **✅ DEPLOYED:**
 - Vercel production: https://gymii.vercel.app
+- GCP OAuth consent screen configured (logo, privacy URL, terms URL)
 
 **📋 NEXT PRIORITIES:**
-1. Mobile device testing
+1. Mobile device testing (iOS/Android)
 2. AI Coach WebSocket testing
-3. Performance optimization
-4. Analytics setup
-5. Bug fixes & refinements
+3. Performance optimization (React.memo, pagination, lazy loading)
+4. Analytics setup (Google Analytics, error tracking)
+5. Testing & CI/CD (Jest, Playwright, GitHub Actions)
 
 **📊 CODE HEALTH:**
 - 0 TypeScript errors ✅
-- All pages compile successfully ✅
+- All pages compile successfully (16 routes) ✅
 - Security rules updated for all collections ✅
 - Firebase backend fully implemented ✅
 - Responsive design complete ✅
+- In-memory caching operational ✅
 
 ## 6. Directory Structure
 ```
 app/
   ├── (app)/
-  │   ├── workouts/page.tsx
-  │   ├── nutrition/page.tsx
-  │   ├── coach/page.tsx
-  │   ├── profile/page.tsx
-  │   └── layout.tsx
-  ├── layout.tsx
+  │   ├── home/page.tsx              # Dashboard (moved from /)
+  │   ├── workouts/page.tsx          # Workout logging
+  │   ├── nutrition/page.tsx         # Meal logging
+  │   ├── coach/page.tsx             # AI Coach
+  │   ├── profile/page.tsx           # Profile + weight tracker
+  │   ├── account/page.tsx           # Account settings + unit preference
+  │   ├── achievements/page.tsx      # Achievements browser
+  │   ├── exercises/page.tsx         # Exercise library
+  │   ├── templates/page.tsx         # Meal templates
+  │   ├── settings/page.tsx          # Data export
+  │   └── layout.tsx                 # App layout (nav, offline indicator)
+  ├── (auth)/
+  │   ├── login/page.tsx             # Login (Google + email/password)
+  │   ├── register/page.tsx          # Register (Google + password strength)
+  │   ├── onboarding/page.tsx        # Onboarding wizard (unit toggle)
+  │   └── layout.tsx                 # Auth layout (gradient, footer)
+  ├── privacy/page.tsx               # Privacy Policy
+  ├── terms/page.tsx                 # Terms of Service
+  ├── page.tsx                       # Landing page
+  ├── layout.tsx                     # Root layout (UnitProvider)
   └── globals.css
 
 components/
   ├── layout/
   │   ├── AppLayout.tsx
   │   ├── BottomNav.tsx
-  │   └── SideNav.tsx
+  │   ├── SideNav.tsx
+  │   ├── PageHeader.tsx             # GYMI branding + notifications + user menu
+  │   ├── NotificationBell.tsx       # Bell icon with unread badge
+  │   ├── NotificationPanel.tsx      # Notification dropdown
+  │   └── NotificationItem.tsx       # Single notification row
   ├── features/
-  │   ├── WorkoutList.tsx
-  │   ├── MealList.tsx
-  │   ├── GoalCard.tsx
-  │   └── WeightChart.tsx
+  │   ├── WorkoutList.tsx / WorkoutCard.tsx / WorkoutForm.tsx
+  │   ├── MealList.tsx / MealCard.tsx / MealForm.tsx
+  │   ├── GoalCard.tsx / GoalForm.tsx
+  │   ├── WeightChart.tsx            # Unit-aware weight chart
+  │   ├── AchievementCard.tsx
+  │   └── StreakIndicator.tsx
+  ├── providers/
+  │   └── UnitProvider.tsx           # Unit system context (metric/imperial)
   └── ui/
       ├── Button.tsx
       ├── Modal.tsx
       ├── SearchBar.tsx
-      └── Toast.tsx
+      ├── Toast.tsx
+      ├── Skeleton.tsx
+      ├── ErrorBoundary.tsx
+      └── OfflineIndicator.tsx
 
 lib/
   ├── firebase.ts
-  ├── auth.ts
+  ├── auth.ts                        # Email/password + Google Sign-In
   ├── workouts.ts
   ├── meals.ts
   ├── goals.ts
   ├── weightLogs.ts
-  ├── stats.ts
-  └── types/firestore.ts
+  ├── stats.ts                       # Unit-aware dashboard stats
+  ├── achievements.ts
+  ├── reports.ts                     # Unit-aware insights
+  ├── notifications.ts               # Notification CRUD + caching
+  ├── notificationTriggers.ts        # Trigger logic with dedup
+  ├── cache.ts                       # In-memory cache with TTL
+  ├── mealTemplates.ts
+  ├── types/firestore.ts             # All types (incl. unitSystem, Notification)
+  ├── utils/
+  │   ├── units.ts                   # kg/lbs, cm/ft-in conversion utilities
+  │   ├── export.ts                  # Unit-aware CSV/JSON export
+  │   ├── search.ts
+  │   ├── validation.ts
+  │   └── timeAgo.ts
+  ├── hooks/
+  │   └── useOffline.ts
+  └── offline/
+      ├── offlineStore.ts            # IndexedDB wrapper
+      └── syncManager.ts             # Sync queue execution
+
+public/
+  ├── manifest.json                  # PWA manifest
+  ├── sw.js                          # Service worker (gymi-v3)
+  ├── offline.html                   # Offline fallback
+  ├── logo-120.png                   # GCP OAuth consent screen logo
+  └── icons/                         # PWA icons (SVG)
 
 firebase/
   ├── firestore.rules

@@ -1,6 +1,6 @@
 # GYMI
 
-> Your intelligent fitness companion—track workouts, log nutrition, and perfect your form with AI-powered coaching.
+> Your intelligent fitness companion — track workouts, log nutrition, and perfect your form with AI-powered coaching.
 
 ## ✨ What It Does
 
@@ -9,7 +9,11 @@
 - **Workout Tracking** — Log exercises, sets, reps, and weight with intelligent search and filtering
 - **Nutrition Logging** — Track meals, macros, and calories throughout your day
 - **AI Form Coach** — Real-time pose detection and feedback via computer vision (FastAPI + MediaPipe)
-- **Progress Monitoring** — Weight tracking with visual charts and goal management
+- **Progress Monitoring** — Weight tracking with visual charts, goal management, and achievements
+- **In-App Notifications** — Bell icon with 10 notification types (streaks, milestones, PRs, goals, weekly summary)
+- **Imperial Units** — Toggle between metric (kg/cm) and imperial (lbs/ft-in) — stores metric internally
+- **Google Sign-In** — One-tap OAuth alongside email/password authentication
+- **Offline & PWA** — Service Worker, IndexedDB offline store, installable on mobile
 - **Dark Mode** — Built-in theme switching for comfortable viewing
 
 ## 🌐 Live Demo
@@ -27,8 +31,8 @@ Visit [localhost:3000](http://localhost:3000) for local development, or check ou
 
 ## 🛠️ Built With
 
-- **Next.js 16** — React 19, App Router, TypeScript strict mode
-- **Firebase** — Authentication, Firestore database, real-time sync
+- **Next.js 16.1.6** — React 19, App Router, TypeScript strict mode
+- **Firebase** — Auth (email/password + Google Sign-In), Firestore database
 - **Tailwind CSS v4** — Modern utility-first styling with dark mode
 - **FastAPI Backend** — Python-based AI pose detection (WebSocket)
 - **MediaPipe** — Google's ML framework for pose landmarks
@@ -38,25 +42,37 @@ Visit [localhost:3000](http://localhost:3000) for local development, or check ou
 ```
 app/
   ├── (app)/
+  │   ├── home/          # Dashboard
   │   ├── workouts/      # Exercise logging
   │   ├── nutrition/     # Meal tracking
   │   ├── coach/         # AI form correction
-  │   ├── profile/       # User data, goals, weight logs
-  │   └── page.tsx       # Dashboard
-  ├── layout.tsx
-  └── globals.css
+  │   ├── progress/      # Goals, weight chart, achievements
+  │   ├── profile/       # User data, weight logs
+  │   └── account/       # Settings, unit preference
+  ├── (auth)/
+  │   ├── login/         # Google + email/password
+  │   ├── register/      # Password strength meter
+  │   └── onboarding/    # Unit toggle, profile setup
+  ├── privacy/           # Privacy Policy
+  ├── terms/             # Terms of Service
+  ├── page.tsx           # Landing page
+  └── layout.tsx
 
 lib/
-  ├── firebase.ts        # Firebase config
-  ├── auth.ts            # Authentication helpers
+  ├── auth.ts            # Auth (email/password + Google)
   ├── workouts.ts        # Workout CRUD
   ├── meals.ts           # Meal CRUD
+  ├── goals.ts           # Goal management
   ├── weightLogs.ts      # Weight tracking
-  └── goals.ts           # Goal management
+  ├── notifications.ts   # Notification CRUD + caching
+  ├── achievements.ts    # Achievements & streaks
+  ├── cache.ts           # In-memory cache with TTL
+  └── utils/units.ts     # kg/lbs, cm/ft-in conversions
 
 components/
-  ├── layout/            # Navigation, AppLayout
+  ├── layout/            # Navigation, header, notifications
   ├── features/          # Domain-specific components
+  ├── providers/         # AuthProvider, UnitProvider
   └── ui/                # Reusable primitives
 ```
 
@@ -77,7 +93,13 @@ NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
 
 The form correction feature requires a separate FastAPI server. See [BACKEND_INTEGRATION_QUICK_START.md](BACKEND_INTEGRATION_QUICK_START.md) for setup instructions.
 
-## 📝 License
+## � Full Documentation
+
+For comprehensive technical documentation — architecture, data model, service layer API, design system, and detailed feature breakdowns — see **[docs/README.md](docs/README.md)**.
+
+For the development roadmap and phase-by-phase implementation details, see **[docs/DEV_PLAN.md](docs/DEV_PLAN.md)**.
+
+## �📝 License
 
 Built as a Final Year Project (FYP) — 2025/2026
 

@@ -11,6 +11,7 @@ import {
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { UserProfile } from './types/firestore';
 import { getErrorMessage } from './utils/errorMessages';
+import { cachedFetch, cacheInvalidate } from './cache';
 
 const googleProvider = new GoogleAuthProvider();
 
@@ -92,17 +93,22 @@ export async function createUserProfile(
 }
 
 export async function getUserProfile(uid: string): Promise<UserProfile | null> {
-  try {
-    const docRef = doc(db, 'users', uid);
-    const docSnap = await getDoc(docRef);
-    
-    if (docSnap.exists()) {
-      return docSnap.data() as UserProfile;
-    }
-    return null;
-  } catch (error) {
-    throw new Error(getErrorMessage(error, 'Failed to load profile'));
-  }
+  return cachedFetch(
+    `profile:${uid}`,
+    async () => {
+      try {
+        const docRef = doc(db, 'users', uid);
+        const docSnap = await getDoc(docRef);
+        if (docSnap.exists()) {
+          return docSnap.data() as UserProfile;
+        }
+        return null;
+      } catch (error) {
+        throw new Error(getErrorMessage(error, 'Failed to load profile'));
+      }
+    },
+    10 * 60 * 1000 // 10-minute TTL — profile rarely changes
+  );
 }
 
 export async function updateUserProfile(
@@ -115,6 +121,8 @@ export async function updateUserProfile(
       ...updates,
       updatedAt: new Date(),
     });
+    // Invalidate cached profile and dashboard stats
+    cacheInvalidate(`profile:${uid}`, `stats:`, `dashboard:`);
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to update profile'));
   }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
@@ -22,69 +22,71 @@ import StreakIndicator from '@/components/features/StreakIndicator';
 import Modal from '@/components/ui/Modal';
 import { WeightChart } from '@/components/features/WeightChart';
 import { Plus, Target, TrendingUp, Award, Lightbulb, ChevronRight } from 'lucide-react';
+import { useCachedData } from '@/lib/hooks/useCachedData';
 
 export default function ProfilePage() {
   const { user } = useAuth();
   const { unitSystem } = useUnits();
   const { showToast } = useToast();
-  const [goals, setGoals] = useState<Goal[]>([]);
-  const [goalsLoading, setGoalsLoading] = useState(true);
+
+  // Cached progress data — single fetch with all sub-queries
+  interface ProgressData {
+    goals: Goal[];
+    weightLogs: WeightLog[];
+    achievements: Achievement[];
+    insights: Insight[];
+    streakInfo: { current: number; longest: number; total: number };
+    activeGoal: Goal | null;
+  }
+
+  const {
+    data: progressData,
+    loading: goalsLoading,
+    setData: setProgressData,
+  } = useCachedData<ProgressData>({
+    key: `progress:${user?.uid}:${unitSystem}`,
+    fetcher: useCallback(async () => {
+      const [goalsData, weightsData, achievementsData, insightsData, workoutsData] = await Promise.all([
+        getActiveGoals(user!.uid),
+        getWeightLogs(user!.uid, 30),
+        getAchievements(user!.uid).catch(() => [] as Achievement[]),
+        getInsights(user!.uid, unitSystem).catch(() => [] as Insight[]),
+        getWorkouts(user!.uid, 500).catch(() => []),
+      ]);
+
+      const weightGoal = goalsData.find(g => g.type === 'weight') || null;
+      const workoutDates = workoutsData.map((w) => w.date);
+      const streaks = calculateStreaks(workoutDates);
+
+      return {
+        goals: goalsData,
+        weightLogs: weightsData,
+        achievements: achievementsData,
+        insights: insightsData,
+        streakInfo: { current: streaks.currentStreak, longest: streaks.longestStreak, total: workoutsData.length },
+        activeGoal: weightGoal,
+      };
+    }, [user, unitSystem]),
+    enabled: !!user,
+    ttl: 5 * 60 * 1000,
+    staleTime: 2 * 60 * 1000,
+  });
+
+  // Destructure for easy access
+  const goals = progressData?.goals ?? [];
+  const weightLogs = progressData?.weightLogs ?? [];
+  const achievements = progressData?.achievements ?? [];
+  const insights = progressData?.insights ?? [];
+  const streakInfo = progressData?.streakInfo ?? { current: 0, longest: 0, total: 0 };
+  const activeGoal = progressData?.activeGoal ?? null;
+
   const [isGoalModalOpen, setIsGoalModalOpen] = useState(false);
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [goalFormLoading, setGoalFormLoading] = useState(false);
-  
-  // Weight tracking states
-  const [weightLogs, setWeightLogs] = useState<WeightLog[]>([]);
   const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
   const [newWeight, setNewWeight] = useState('');
   const [newNotes, setNewNotes] = useState('');
   const [weightSubmitting, setWeightSubmitting] = useState(false);
-  const [activeGoal, setActiveGoal] = useState<Goal | null>(null);
-
-  // Achievements & Insights states
-  const [achievements, setAchievements] = useState<Achievement[]>([]);
-  const [insights, setInsights] = useState<Insight[]>([]);
-  const [streakInfo, setStreakInfo] = useState({ current: 0, longest: 0, total: 0 });
-
-  // Fetch active goals, weight logs, achievements, insights
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchData = async () => {
-      try {
-        const [goalsData, weightsData, achievementsData, insightsData, workoutsData] = await Promise.all([
-          getActiveGoals(user.uid),
-          getWeightLogs(user.uid, 30),
-          getAchievements(user.uid).catch(() => []),
-          getInsights(user.uid, unitSystem).catch(() => []),
-          getWorkouts(user.uid, 500).catch(() => []),
-        ]);
-        setGoals(goalsData);
-        setWeightLogs(weightsData);
-        setAchievements(achievementsData);
-        setInsights(insightsData);
-
-        const weightGoal = goalsData.find(g => g.type === 'weight');
-        setActiveGoal(weightGoal || null);
-
-        // Calculate streaks
-        const workoutDates = workoutsData.map((w) => w.date);
-        const streaks = calculateStreaks(workoutDates);
-        setStreakInfo({
-          current: streaks.currentStreak,
-          longest: streaks.longestStreak,
-          total: workoutsData.length,
-        });
-      } catch (error) {
-        console.error('Error fetching data:', error);
-        showToast('Failed to load data', 'error');
-      } finally {
-        setGoalsLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [user, showToast]);
 
   const handleAddGoal = async (data: Omit<Goal, 'id' | 'createdAt' | 'updatedAt'>) => {
     if (!user) return;
@@ -98,7 +100,7 @@ export default function ProfilePage() {
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-      setGoals([newGoal, ...goals]);
+      setProgressData((prev) => prev ? { ...prev, goals: [newGoal, ...prev.goals] } : prev!);
       setIsGoalModalOpen(false);
       showToast('Goal created successfully!', 'success');
     } catch (error) {
@@ -115,11 +117,12 @@ export default function ProfilePage() {
     setGoalFormLoading(true);
     try {
       await updateGoal(user.uid, editingGoal.id, data);
-      setGoals(
-        goals.map((g) =>
+      setProgressData((prev) => prev ? {
+        ...prev,
+        goals: prev.goals.map((g) =>
           g.id === editingGoal.id ? { ...g, ...data, updatedAt: new Date() } : g
-        )
-      );
+        ),
+      } : prev!);
       setIsGoalModalOpen(false);
       setEditingGoal(null);
       showToast('Goal updated successfully!', 'success');
@@ -161,7 +164,7 @@ export default function ProfilePage() {
         updatedAt: new Date(),
       };
 
-      setWeightLogs([newLog, ...weightLogs]);
+      setProgressData((prev) => prev ? { ...prev, weightLogs: [newLog, ...prev.weightLogs] } : prev!);
       setIsWeightModalOpen(false);
       setNewWeight('');
       setNewNotes('');
@@ -179,7 +182,7 @@ export default function ProfilePage() {
 
     try {
       await deleteGoal(user.uid, goalId);
-      setGoals(goals.filter((g) => g.id !== goalId));
+      setProgressData((prev) => prev ? { ...prev, goals: prev.goals.filter((g) => g.id !== goalId) } : prev!);
       showToast('Goal deleted successfully!', 'success');
     } catch (error) {
       console.error('Error deleting goal:', error);
@@ -193,11 +196,12 @@ export default function ProfilePage() {
     try {
       await completeGoal(user.uid, goalId);
       const completedGoal = goals.find((g) => g.id === goalId);
-      setGoals(
-        goals.map((g) =>
+      setProgressData((prev) => prev ? {
+        ...prev,
+        goals: prev.goals.map((g) =>
           g.id === goalId ? { ...g, status: 'completed' as const, completedAt: new Date() } : g
-        )
-      );
+        ),
+      } : prev!);
       showToast('Goal completed! 🎉', 'success');
       if (completedGoal) {
         triggerGoalCompletedNotification(user.uid, completedGoal.title).catch(() => {});

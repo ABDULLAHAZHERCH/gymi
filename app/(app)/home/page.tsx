@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect } from 'react';
 import Link from 'next/link';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { getUserProfile } from '@/lib/auth';
@@ -19,37 +19,33 @@ import {
 } from 'lucide-react';
 import { triggerDashboardNotifications } from '@/lib/notificationTriggers';
 import { useUnits } from '@/components/providers/UnitProvider';
+import { useCachedData } from '@/lib/hooks/useCachedData';
 
 export default function Home() {
   const { user } = useAuth();
   const { unitSystem } = useUnits();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [stats, setStats] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
 
+  const { data: profile } = useCachedData<UserProfile | null>({
+    key: `profile:${user?.uid}`,
+    fetcher: useCallback(() => getUserProfile(user!.uid), [user]),
+    enabled: !!user,
+    ttl: 10 * 60 * 1000, // 10 min
+  });
+
+  const { data: stats, loading } = useCachedData<any>({
+    key: `stats:${user?.uid}:dashboard:${unitSystem}`,
+    fetcher: useCallback(() => getDashboardStats(user!.uid, unitSystem), [user, unitSystem]),
+    enabled: !!user,
+    ttl: 2 * 60 * 1000, // 2 min — matches stats.ts internal TTL
+    staleTime: 60 * 1000, // revalidate after 1 min
+  });
+
+  // Trigger dashboard notifications once per session
   useEffect(() => {
-    if (!user) return;
-
-    const fetchData = async () => {
-      try {
-        const [userProfile, dashboardStats] = await Promise.all([
-          getUserProfile(user.uid),
-          getDashboardStats(user.uid, unitSystem),
-        ]);
-        setProfile(userProfile);
-        setStats(dashboardStats);
-
-        // Trigger dashboard notifications (streak warnings, weekly summary, etc.)
-        triggerDashboardNotifications(user.uid).catch(() => {});
-      } catch (error) {
-        console.error('Error fetching data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [user]);
+    if (user && stats) {
+      triggerDashboardNotifications(user.uid).catch(() => {});
+    }
+  }, [user, !!stats]);
 
   const greeting = () => {
     const h = new Date().getHours();

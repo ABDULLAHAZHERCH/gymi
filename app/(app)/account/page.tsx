@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useUnits } from '@/components/providers/UnitProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
@@ -11,6 +11,7 @@ import { displayWeight, displayHeight } from '@/lib/utils/units';
 import AppLayout from '@/components/layout/AppLayout';
 import Link from 'next/link';
 import { User, Save, Ruler, Shield, FileText, ExternalLink } from 'lucide-react';
+import { useCachedData } from '@/lib/hooks/useCachedData';
 
 type Tab = 'profile' | 'preferences' | 'about';
 
@@ -18,33 +19,27 @@ export default function AccountPage() {
   const { user } = useAuth();
   const { unitSystem, setUnitSystem } = useUnits();
   const { showToast } = useToast();
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+
+  const { data: profile, setData: setProfile } = useCachedData<UserProfile | null>({
+    key: `profile:${user?.uid}`,
+    fetcher: useCallback(() => getUserProfile(user!.uid), [user]),
+    enabled: !!user,
+    ttl: 10 * 60 * 1000,
+  });
+
+  const loading = profile === undefined && !!user;
   const [saving, setSaving] = useState(false);
   const [editName, setEditName] = useState('');
   const [editGoal, setEditGoal] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('profile');
 
+  // Initialize form fields when profile loads
   useEffect(() => {
-    if (!user) return;
-
-    const fetchProfile = async () => {
-      try {
-        const data = await getUserProfile(user.uid);
-        if (data) {
-          setProfile(data);
-          setEditName(data.name || user.displayName || '');
-          setEditGoal(data.goal || '');
-        }
-      } catch (error) {
-        console.error('Error loading profile:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchProfile();
-  }, [user]);
+    if (profile) {
+      setEditName(profile.name || user?.displayName || '');
+      setEditGoal(profile.goal || '');
+    }
+  }, [profile, user]);
 
   const handleSave = async () => {
     if (!user) return;

@@ -1,7 +1,21 @@
 'use client';
 
 import { useCallback, useRef, useEffect, useState } from 'react';
-import { Play, Pause } from 'lucide-react';
+import {
+  Play,
+  Square,
+  RotateCcw,
+  Maximize,
+  Minimize,
+  Video,
+  Upload,
+  Wifi,
+  Timer,
+  Target,
+  TrendingUp,
+  AlertTriangle,
+  SwitchCamera,
+} from 'lucide-react';
 import CameraView from '@/components/features/CameraView';
 import { usePoseWebSocket, type FormCorrectionResponse } from '@/lib/hooks/usePoseWebSocket';
 import { useToast } from '@/lib/contexts/ToastContext';
@@ -9,19 +23,20 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import AppLayout from '@/components/layout/AppLayout';
 
 /**
- * Coach Page with FastAPI Backend Integration
- * 
- * Real-time exercise form correction via WebSocket.
+ * Coach Page — Spacious, fullscreen-ready, icon-driven UI
  */
 export default function CoachPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   const [isStreaming, setIsStreaming] = useState(false);
   const [feedback, setFeedback] = useState<FormCorrectionResponse | null>(null);
   const [exerciseMode, setExerciseMode] = useState<'live' | 'upload'>('live');
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
   const [sessionStats, setSessionStats] = useState({
     totalReps: 0,
     validReps: 0,
@@ -35,8 +50,6 @@ export default function CoachPage() {
     enabled: isStreaming,
     onMessage: (response) => {
       setFeedback(response);
-      
-      // Track statistics
       setSessionStats((prev) => {
         const newStats = { ...prev };
         if (response.rep_count > newStats.totalReps) {
@@ -48,15 +61,9 @@ export default function CoachPage() {
         return newStats;
       });
     },
-    onConnect: () => {
-      showToast('Connected to form analysis', 'success');
-    },
-    onError: () => {
-      showToast('Connection error. Please try again.', 'error');
-    },
-    onDisconnect: () => {
-      showToast('Disconnected from form analysis', 'warning');
-    },
+    onConnect: () => showToast('Connected to form analysis', 'success'),
+    onError: () => showToast('Connection error. Please try again.', 'error'),
+    onDisconnect: () => showToast('Disconnected from form analysis', 'warning'),
   });
 
   // Handle pose detection from CameraView
@@ -65,15 +72,8 @@ export default function CoachPage() {
       if (isConnected) {
         sendLandmarks(landmarks);
       }
-
-      // Draw pose on canvas for visualization
       if (canvasRef.current && videoRef.current) {
-        drawPoseOnCanvas(
-          canvasRef.current,
-          videoRef.current,
-          landmarks,
-          feedback?.joint_colors || {}
-        );
+        drawPoseOnCanvas(canvasRef.current, videoRef.current, landmarks, feedback?.joint_colors || {});
       }
     },
     [isConnected, sendLandmarks, feedback?.joint_colors]
@@ -81,43 +81,48 @@ export default function CoachPage() {
 
   const handleStartSession = () => {
     setIsStreaming(true);
-    setSessionStats({
-      totalReps: 0,
-      validReps: 0,
-      startTime: Date.now(),
-      duration: 0,
-    });
-    showToast('Starting form analysis...', 'info');
+    setSessionStats({ totalReps: 0, validReps: 0, startTime: Date.now(), duration: 0 });
   };
 
   const handleStopSession = () => {
     setIsStreaming(false);
-    showToast('Form analysis stopped', 'info');
   };
 
   const handleReset = async () => {
     await resetSession();
     setFeedback(null);
-    setSessionStats({
-      totalReps: 0,
-      validReps: 0,
-      startTime: 0,
-      duration: 0,
-    });
+    setSessionStats({ totalReps: 0, validReps: 0, startTime: 0, duration: 0 });
     showToast('Session reset', 'info');
   };
+
+  const toggleFullscreen = async () => {
+    if (!containerRef.current) return;
+    try {
+      if (!document.fullscreenElement) {
+        await containerRef.current.requestFullscreen();
+        setIsFullscreen(true);
+      } else {
+        await document.exitFullscreen();
+        setIsFullscreen(false);
+      }
+    } catch {
+      showToast('Fullscreen not supported', 'warning');
+    }
+  };
+
+  // Listen for fullscreen exit via Escape
+  useEffect(() => {
+    const handleChange = () => setIsFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handleChange);
+    return () => document.removeEventListener('fullscreenchange', handleChange);
+  }, []);
 
   // Update session duration
   useEffect(() => {
     if (!isStreaming) return;
-
     const interval = setInterval(() => {
-      setSessionStats((prev) => ({
-        ...prev,
-        duration: Math.floor((Date.now() - prev.startTime) / 1000),
-      }));
+      setSessionStats((prev) => ({ ...prev, duration: Math.floor((Date.now() - prev.startTime) / 1000) }));
     }, 1000);
-
     return () => clearInterval(interval);
   }, [isStreaming]);
 
@@ -126,216 +131,300 @@ export default function CoachPage() {
       ? Math.round((sessionStats.validReps / sessionStats.totalReps) * 100)
       : 0;
 
-  return (
-    <AppLayout title="AI Form Coach">
-      <section className="space-y-6">
-        {/* Intro */}
-        <div className="space-y-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted-foreground)]">
-            Real-time analysis
-          </p>
-          <h2 className="text-2xl font-semibold text-[color:var(--foreground)]">
-            Exercise Form Coach
-          </h2>
-          <p className="text-sm leading-6 text-[color:var(--muted-foreground)]">
-            Get instant feedback on your exercise form with AI-powered analysis
-          </p>
+  const formatTime = (s: number) => {
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${sec.toString().padStart(2, '0')}`;
+  };
+
+  // Fullscreen layout
+  if (isFullscreen) {
+    return (
+      <div ref={containerRef} className="relative h-screen w-screen bg-black">
+        {/* Camera fills screen */}
+        <div className="absolute inset-0">
+          <CameraView
+            isActive={isStreaming}
+            facingMode={facingMode}
+            className="h-full w-full"
+            onFrameCapture={() => {}}
+          />
         </div>
 
-        {/* Mode Selector */}
+        {/* Top overlay — status bar */}
+        <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/60 to-transparent">
+          <div className="flex items-center gap-2">
+            <div className={`h-2 w-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`} />
+            <span className="text-xs font-medium text-white/80">
+              {isConnected ? 'Connected' : 'Disconnected'}
+            </span>
+          </div>
+          {isStreaming && (
+            <div className="flex items-center gap-1.5 rounded-full bg-red-500/90 px-3 py-1">
+              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+              <span className="text-xs font-semibold text-white">{formatTime(sessionStats.duration)}</span>
+            </div>
+          )}
+        </div>
+
+        {/* Bottom overlay — controls + stats */}
+        <div className="absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/70 to-transparent pb-6 pt-12">
+          {/* Feedback banner */}
+          {feedback?.correction_message && (
+            <div className="mx-4 mb-4 rounded-xl bg-white/10 px-4 py-2.5 backdrop-blur-md">
+              <p className="text-center text-sm text-white">{feedback.correction_message}</p>
+            </div>
+          )}
+
+          {/* Stats row */}
+          {feedback && (
+            <div className="mx-4 mb-4 flex justify-center gap-6">
+              <div className="text-center">
+                <p className="text-2xl font-bold text-white">{feedback.rep_count}</p>
+                <p className="text-[10px] uppercase tracking-wider text-white/60">Reps</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-white">{accuracyPercent}%</p>
+                <p className="text-[10px] uppercase tracking-wider text-white/60">Accuracy</p>
+              </div>
+              <div className="text-center">
+                <p className="text-2xl font-bold text-white">{(feedback.confidence * 100).toFixed(0)}%</p>
+                <p className="text-[10px] uppercase tracking-wider text-white/60">Confidence</p>
+              </div>
+            </div>
+          )}
+
+          {/* Controls */}
+          <div className="flex items-center justify-center gap-4">
+            <button onClick={handleReset} className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 backdrop-blur-md transition-colors hover:bg-white/25" title="Reset">
+              <RotateCcw className="h-5 w-5 text-white" />
+            </button>
+            <button
+              onClick={isStreaming ? handleStopSession : handleStartSession}
+              className={`flex h-16 w-16 items-center justify-center rounded-full transition-all active:scale-95 ${
+                isStreaming ? 'bg-red-500 hover:bg-red-600' : 'bg-white hover:bg-zinc-200'
+              }`}
+            >
+              {isStreaming ? <Square className="h-6 w-6 text-white" /> : <Play className="h-6 w-6 text-black ml-0.5" />}
+            </button>
+            <button onClick={toggleFullscreen} className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 backdrop-blur-md transition-colors hover:bg-white/25" title="Exit fullscreen">
+              <Minimize className="h-5 w-5 text-white" />
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Normal layout
+  return (
+    <AppLayout title="AI Form Coach">
+      <section className="space-y-5">
+        {/* Minimal header */}
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-xl font-semibold text-[color:var(--foreground)] sm:text-2xl">
+              Form Coach
+            </h2>
+            <p className="text-xs text-[color:var(--muted-foreground)] mt-0.5">
+              AI-powered exercise analysis
+            </p>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <div className={`h-2 w-2 rounded-full ${isConnected ? 'bg-green-500' : 'bg-red-500'}`} />
+            <span className="text-xs text-[color:var(--muted-foreground)]">
+              {isConnected ? 'Live' : 'Offline'}
+            </span>
+          </div>
+        </div>
+
+        {/* Mode toggle — icon pills */}
         <div className="flex gap-2">
           <button
             onClick={() => setExerciseMode('live')}
-            className={`flex-1 rounded-lg px-4 py-2 font-medium transition-colors ${
+            className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-all ${
               exerciseMode === 'live'
                 ? 'bg-[color:var(--foreground)] text-[color:var(--background)]'
-                : 'border border-zinc-200 bg-[color:var(--background)] text-[color:var(--foreground)] hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900'
+                : 'border border-zinc-200 text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] dark:border-zinc-800'
             }`}
           >
-            📹 Live Camera
+            <Video className="h-4 w-4" />
+            Live
           </button>
           <button
             onClick={() => setExerciseMode('upload')}
-            className={`flex-1 rounded-lg px-4 py-2 font-medium transition-colors ${
+            className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-all ${
               exerciseMode === 'upload'
                 ? 'bg-[color:var(--foreground)] text-[color:var(--background)]'
-                : 'border border-zinc-200 bg-[color:var(--background)] text-[color:var(--foreground)] hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900'
+                : 'border border-zinc-200 text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] dark:border-zinc-800'
             }`}
           >
-            📁 Upload Video
+            <Upload className="h-4 w-4" />
+            Upload
           </button>
         </div>
 
-        {/* Main Content Grid */}
-        <div className="grid gap-6 md:grid-cols-3">
-          {/* Video/Camera Section */}
-          <div className="md:col-span-2 space-y-3">
-            <div className="border border-zinc-200 rounded-2xl overflow-hidden bg-[color:var(--background)] shadow-sm dark:border-zinc-800">
-              {exerciseMode === 'live' ? (
-                <CameraView
-                  isActive={isStreaming}
-                  onFrameCapture={(canvas) => {
-                    // Handle camera frame
-                    // In a real implementation, this would detect pose and send landmarks
-                  }}
-                />
-              ) : (
-                <div className="w-full h-80 md:h-96 bg-[color:var(--muted-foreground)]/10 flex items-center justify-center">
-                  <div className="text-center space-y-3">
-                    <p className="text-2xl">📁</p>
-                    <p className="text-sm font-medium text-[color:var(--foreground)]">Upload Video</p>
-                    <input type="file" accept="video/*" className="hidden" id="video-upload" />
-                    <label htmlFor="video-upload" className="inline-block cursor-pointer rounded-lg border border-zinc-200 bg-[color:var(--background)] px-4 py-2 text-sm font-medium transition-colors hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-900">
-                      Select Video
-                    </label>
-                  </div>
-                </div>
-              )}
+        {/* Camera / Upload area */}
+        <div ref={containerRef} className="relative overflow-hidden rounded-2xl border border-zinc-200 bg-black shadow-sm dark:border-zinc-800">
+          {exerciseMode === 'live' && isStreaming ? (
+            <CameraView
+              isActive={isStreaming}
+              facingMode={facingMode}
+              className="aspect-[4/3] w-full sm:aspect-video"
+              onFrameCapture={() => {}}
+            />
+          ) : exerciseMode === 'live' && !isStreaming ? (
+            <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-4 sm:aspect-video">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10">
+                <Video className="h-6 w-6 text-white/60" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-white/80">Live Camera</p>
+                <p className="text-xs text-white/40 mt-1">Press play to start</p>
+              </div>
             </div>
-
-            {/* Controls */}
-            <div className="flex gap-2">
-              <button
-                onClick={handleStartSession}
-                disabled={isStreaming}
-                className="flex-1 rounded-lg border border-zinc-200 bg-[color:var(--background)] px-4 py-2 font-medium text-[color:var(--foreground)] transition-colors hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-zinc-800 dark:hover:bg-zinc-900 flex items-center justify-center gap-2"
+          ) : (
+            <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-4 sm:aspect-video">
+              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10">
+                <Upload className="h-6 w-6 text-white/60" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-white/80">Upload a video</p>
+                <p className="text-xs text-white/40 mt-1">MP4, MOV supported</p>
+              </div>
+              <input type="file" accept="video/*" className="hidden" id="video-upload" />
+              <label
+                htmlFor="video-upload"
+                className="cursor-pointer rounded-xl bg-white/10 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20"
               >
-                <Play className="w-4 h-4" />
-                Start
-              </button>
-              <button
-                onClick={handleStopSession}
-                disabled={!isStreaming}
-                className="flex-1 rounded-lg border border-zinc-200 bg-[color:var(--background)] px-4 py-2 font-medium text-[color:var(--foreground)] transition-colors hover:bg-zinc-50 disabled:opacity-50 disabled:cursor-not-allowed dark:border-zinc-800 dark:hover:bg-zinc-900 flex items-center justify-center gap-2"
-              >
-                <Pause className="w-4 h-4" />
-                Stop
-              </button>
+                Choose File
+              </label>
             </div>
-          </div>
+          )}
 
-          {/* Feedback & Stats Section */}
-          <div className="space-y-3">
-            {/* Connection Status Card */}
-            <div className="border border-zinc-200 rounded-2xl p-4 bg-[color:var(--background)] shadow-sm dark:border-zinc-800">
-              <div className="flex items-center gap-2">
-                <div
-                  className={`w-2 h-2 rounded-full ${
-                    isConnected ? 'bg-green-500' : 'bg-red-500'
-                  }`}
-                />
-                <span className="text-xs font-medium text-[color:var(--muted-foreground)]">
-                  {isConnected ? 'Connected' : 'Disconnected'}
-                </span>
-              </div>
+          {/* Live recording indicator */}
+          {isStreaming && (
+            <div className="absolute top-3 left-3 flex items-center gap-1.5 rounded-full bg-red-500/90 px-2.5 py-1">
+              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+              <span className="text-[10px] font-semibold text-white">{formatTime(sessionStats.duration)}</span>
             </div>
+          )}
 
-            {/* Feedback Card */}
-            {feedback ? (
-              <div className="border border-zinc-200 rounded-2xl p-4 bg-[color:var(--background)] shadow-sm space-y-3 dark:border-zinc-800">
-                <h3 className="font-semibold text-[color:var(--foreground)]">
-                  {feedback.exercise_display}
-                </h3>
+          {/* Feedback overlay on camera */}
+          {feedback?.correction_message && isStreaming && (
+            <div className="absolute bottom-3 left-3 right-3 rounded-xl bg-black/60 px-3 py-2 backdrop-blur-sm">
+              <p className="text-center text-xs text-white sm:text-sm">{feedback.correction_message}</p>
+            </div>
+          )}
+        </div>
 
-                <div className="space-y-2 text-sm">
-                  <div className="flex justify-between items-center">
-                    <span className="text-[color:var(--muted-foreground)]">Rep Count:</span>
-                    <span className="text-xl font-bold text-[color:var(--foreground)]">
-                      {feedback.rep_count}
-                    </span>
-                  </div>
+        {/* Controls — icon buttons bar */}
+        <div className="flex items-center justify-center gap-3">
+          {exerciseMode === 'live' && (
+            <button
+              onClick={() => setFacingMode(facingMode === 'user' ? 'environment' : 'user')}
+              className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)] dark:border-zinc-800"
+              title="Switch camera"
+            >
+              <SwitchCamera className="h-5 w-5" />
+            </button>
+          )}
 
-                  <div className="flex justify-between items-center">
-                    <span className="text-[color:var(--muted-foreground)]">Status:</span>
-                    <span className={`px-2 py-1 rounded text-xs font-semibold ${
-                      feedback.is_rep_valid
-                        ? 'bg-green-500/20 text-green-700 dark:text-green-400'
-                        : 'bg-red-500/20 text-red-700 dark:text-red-400'
-                    }`}>
-                      {feedback.is_rep_valid ? '✅ Valid' : '⚠️ Invalid'}
-                    </span>
-                  </div>
+          <button
+            onClick={handleReset}
+            disabled={!feedback && sessionStats.totalReps === 0}
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)] disabled:opacity-30 dark:border-zinc-800"
+            title="Reset session"
+          >
+            <RotateCcw className="h-5 w-5" />
+          </button>
 
-                  {feedback.violations.length > 0 && (
-                    <div className="text-xs space-y-1 pt-2 border-t border-zinc-200 dark:border-zinc-700">
-                      <p className="font-semibold text-red-700 dark:text-red-400">Issues:</p>
-                      <ul className="text-red-600 dark:text-red-300 space-y-0.5">
-                        {feedback.violations.map((v, i) => (
-                          <li key={i}>• {v}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-
-                  {feedback.correction_message && (
-                    <p className="text-xs text-[color:var(--muted-foreground)] pt-2 border-t border-zinc-200 dark:border-zinc-700">
-                      💡 {feedback.correction_message}
-                    </p>
-                  )}
-
-                  <div className="flex justify-between text-xs text-[color:var(--muted-foreground)] pt-2 border-t border-zinc-200 dark:border-zinc-700">
-                    <span>Confidence: {(feedback.confidence * 100).toFixed(0)}%</span>
-                    <span>Phase: {feedback.rep_phase}</span>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Session Stats */}
-            {feedback ? (
-              <div className="border border-zinc-200 rounded-2xl p-4 bg-[color:var(--background)] shadow-sm space-y-3 dark:border-zinc-800">
-                <h3 className="font-semibold text-[color:var(--foreground)]">Session</h3>
-
-                <div className="grid grid-cols-2 gap-3 text-sm">
-                  <div className="flex flex-col">
-                    <span className="text-xs text-[color:var(--muted-foreground)]">Reps</span>
-                    <span className="font-bold text-[color:var(--foreground)]">
-                      {sessionStats.totalReps}
-                    </span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-xs text-[color:var(--muted-foreground)]">Valid</span>
-                    <span className="font-bold text-[color:var(--foreground)]">
-                      {sessionStats.validReps}
-                    </span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-xs text-[color:var(--muted-foreground)]">Accuracy</span>
-                    <span className="font-bold text-[color:var(--foreground)]">
-                      {accuracyPercent}%
-                    </span>
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-xs text-[color:var(--muted-foreground)]">Time</span>
-                    <span className="font-bold text-[color:var(--foreground)]">
-                      {sessionStats.duration}s
-                    </span>
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            {/* Empty State */}
-            {!feedback && (
-              <div className="border border-zinc-200 rounded-2xl p-6 bg-[color:var(--background)] shadow-sm text-center flex flex-col items-center justify-center space-y-2 dark:border-zinc-800">
-                <p className="text-2xl">✨</p>
-                <p className="text-xs font-medium text-[color:var(--muted-foreground)]">
-                  {isStreaming ? 'Detecting pose...' : 'Start session to begin'}
-                </p>
-              </div>
+          <button
+            onClick={isStreaming ? handleStopSession : handleStartSession}
+            className={`flex h-14 w-14 items-center justify-center rounded-2xl text-white transition-all active:scale-95 ${
+              isStreaming
+                ? 'bg-red-500 hover:bg-red-600'
+                : 'bg-[color:var(--foreground)] hover:opacity-90'
+            }`}
+            title={isStreaming ? 'Stop' : 'Start'}
+          >
+            {isStreaming ? (
+              <Square className="h-5 w-5" />
+            ) : (
+              <Play className="h-5 w-5 text-[color:var(--background)] ml-0.5" />
             )}
-          </div>
+          </button>
+
+          <button
+            onClick={toggleFullscreen}
+            className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)] dark:border-zinc-800"
+            title="Fullscreen"
+          >
+            <Maximize className="h-5 w-5" />
+          </button>
         </div>
 
-        {/* Info Section */}
-        <div className="border border-zinc-200 rounded-2xl p-4 bg-[color:var(--background)] shadow-sm space-y-2 dark:border-zinc-800">
-          <h3 className="text-sm font-semibold text-[color:var(--foreground)]">How it works</h3>
-          <ul className="text-xs text-[color:var(--muted-foreground)] space-y-1">
-            <li>• Choose live camera or upload video</li>
-            <li>• AI analyzes your exercise form in real-time</li>
-            <li>• Get instant feedback and rep counting</li>
-          </ul>
-        </div>
+        {/* Stats cards — only show when there's data */}
+        {feedback && (
+          <div className="grid grid-cols-4 gap-2 sm:gap-3">
+            <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
+              <Target className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
+              <p className="text-lg font-bold text-[color:var(--foreground)]">{feedback.rep_count}</p>
+              <p className="text-[10px] text-[color:var(--muted-foreground)]">Reps</p>
+            </div>
+            <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
+              <TrendingUp className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
+              <p className="text-lg font-bold text-[color:var(--foreground)]">{accuracyPercent}%</p>
+              <p className="text-[10px] text-[color:var(--muted-foreground)]">Accuracy</p>
+            </div>
+            <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
+              <Timer className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
+              <p className="text-lg font-bold text-[color:var(--foreground)]">{formatTime(sessionStats.duration)}</p>
+              <p className="text-[10px] text-[color:var(--muted-foreground)]">Time</p>
+            </div>
+            <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
+              <Wifi className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
+              <p className="text-lg font-bold text-[color:var(--foreground)]">{(feedback.confidence * 100).toFixed(0)}%</p>
+              <p className="text-[10px] text-[color:var(--muted-foreground)]">Confidence</p>
+            </div>
+          </div>
+        )}
+
+        {/* Violations */}
+        {feedback && feedback.violations.length > 0 && (
+          <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-950/20">
+            <div className="flex items-center gap-2 mb-2">
+              <AlertTriangle className="h-4 w-4 text-red-500" />
+              <p className="text-sm font-medium text-red-700 dark:text-red-400">Form Issues</p>
+            </div>
+            <ul className="space-y-1">
+              {feedback.violations.map((v, i) => (
+                <li key={i} className="text-xs text-red-600 dark:text-red-300">• {v}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Empty state — before session starts */}
+        {!feedback && !isStreaming && (
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-200 py-10 dark:border-zinc-800">
+            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-100 dark:bg-zinc-900">
+              <Play className="h-5 w-5 text-[color:var(--muted-foreground)] ml-0.5" />
+            </div>
+            <p className="mt-3 text-sm font-medium text-[color:var(--foreground)]">Ready to train</p>
+            <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+              Hit play to start AI form analysis
+            </p>
+          </div>
+        )}
+
+        {/* Detecting state */}
+        {!feedback && isStreaming && (
+          <div className="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 py-4 dark:border-zinc-800">
+            <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+            <p className="text-sm text-[color:var(--muted-foreground)]">Detecting pose...</p>
+          </div>
+        )}
       </section>
     </AppLayout>
   );
@@ -355,25 +444,16 @@ function drawPoseOnCanvas(
 
   canvas.width = video.videoWidth;
   canvas.height = video.videoHeight;
-
-  // Draw video frame
   ctx.drawImage(video, 0, 0);
 
-  // Skeleton connections (MediaPipe 33-point format)
   const connections = [
-    // Right arm
     [11, 13, 15],
-    // Left arm
     [12, 14, 16],
-    // Right leg
     [11, 23, 25, 27],
-    // Left leg
     [12, 24, 26, 28],
-    // Spine
     [11, 12, 23, 24],
   ];
 
-  // Draw connections
   ctx.strokeStyle = 'rgba(0, 255, 0, 0.7)';
   ctx.lineWidth = 3;
 
@@ -390,30 +470,16 @@ function drawPoseOnCanvas(
     }
   });
 
-  // Draw joints with color feedback
   landmarks.forEach((landmark, index) => {
     if (landmark.visibility > 0.5) {
-      // Get color from server feedback or default to green
       const jointKey = `landmark_${index}`;
       const color = jointColors[jointKey] || '#00ff00';
-
-      // Convert color string to RGBA
-      const rgbaColor = color.startsWith('#')
-        ? hexToRgba(color, 0.8)
-        : 'rgba(0, 255, 0, 0.8)';
+      const rgbaColor = color.startsWith('#') ? hexToRgba(color, 0.8) : 'rgba(0, 255, 0, 0.8)';
 
       ctx.fillStyle = rgbaColor;
       ctx.beginPath();
-      ctx.arc(
-        landmark.x * canvas.width,
-        landmark.y * canvas.height,
-        6,
-        0,
-        2 * Math.PI
-      );
+      ctx.arc(landmark.x * canvas.width, landmark.y * canvas.height, 6, 0, 2 * Math.PI);
       ctx.fill();
-
-      // Draw border for visibility
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
       ctx.lineWidth = 1;
       ctx.stroke();
@@ -421,9 +487,6 @@ function drawPoseOnCanvas(
   });
 }
 
-/**
- * Convert hex color to RGBA
- */
 function hexToRgba(hex: string, alpha: number): string {
   const r = parseInt(hex.slice(1, 3), 16);
   const g = parseInt(hex.slice(3, 5), 16);

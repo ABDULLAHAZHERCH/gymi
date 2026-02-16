@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useMemo, useCallback } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
 import {
@@ -14,6 +14,7 @@ import AchievementCard from '@/components/features/AchievementCard';
 import StreakIndicator from '@/components/features/StreakIndicator';
 import { ListSkeleton } from '@/components/ui/Skeleton';
 import { Award, Filter } from 'lucide-react';
+import { useCachedData } from '@/lib/hooks/useCachedData';
 
 type FilterType = 'all' | 'unlocked' | 'locked' | 'streak' | 'workout_count' | 'weight_milestone' | 'personal_record';
 
@@ -21,35 +22,23 @@ export default function AchievementsPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
 
-  const [milestones, setMilestones] = useState<
+  const { data: milestones = [], loading } = useCachedData<
     Array<AchievementDefinition & { unlocked: boolean; unlockedAt?: Date; progress: number }>
-  >([]);
-  const [stats, setStats] = useState<UserAchievementStats | null>(null);
-  const [loading, setLoading] = useState(true);
+  >({
+    key: `milestones:${user?.uid}`,
+    fetcher: useCallback(() => getMilestoneProgress(user!.uid), [user]),
+    enabled: !!user,
+    ttl: 5 * 60 * 1000,
+  });
+
+  const { data: stats } = useCachedData<UserAchievementStats | null>({
+    key: `achievementStats:${user?.uid}`,
+    fetcher: useCallback(() => gatherAchievementStats(user!.uid), [user]),
+    enabled: !!user,
+    ttl: 5 * 60 * 1000,
+  });
+
   const [filter, setFilter] = useState<FilterType>('all');
-
-  // Fetch achievement data
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchData = async () => {
-      try {
-        const [milestoneData, statsData] = await Promise.all([
-          getMilestoneProgress(user.uid),
-          gatherAchievementStats(user.uid),
-        ]);
-        setMilestones(milestoneData);
-        setStats(statsData);
-      } catch (error) {
-        console.error('Error fetching achievements:', error);
-        showToast('Failed to load achievements', 'error');
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [user, showToast]);
 
   // Filtered milestones
   const filteredMilestones = useMemo(() => {

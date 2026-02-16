@@ -49,20 +49,29 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
   const [isConnected, setIsConnected] = useState(false);
   const [lastResponse, setLastResponse] = useState<FormCorrectionResponse | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastErrorTimeRef = useRef(0);
+  const errorReportedRef = useRef(false);
+  const enabledRef = useRef(enabled);
   const maxReconnectAttempts = 5;
+
+  // Keep enabledRef in sync
+  useEffect(() => {
+    enabledRef.current = enabled;
+  }, [enabled]);
 
   // Connect to WebSocket
   const connect = useCallback(() => {
-    if (!enabled || wsRef.current) return;
+    if (!enabledRef.current || wsRef.current) return;
 
     try {
       const wsUrl = `${serverUrl}/api/ws/pose/${clientId}`;
       wsRef.current = new WebSocket(wsUrl);
 
       wsRef.current.onopen = () => {
-        console.log('✅ WebSocket connected');
         setIsConnected(true);
         reconnectAttemptsRef.current = 0;
+        errorReportedRef.current = false;
         onConnect?.();
       };
 
@@ -71,35 +80,56 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
           const response: FormCorrectionResponse = JSON.parse(event.data);
           setLastResponse(response);
           onMessage?.(response);
-        } catch (error) {
-          console.error('Failed to parse WebSocket message:', error);
+        } catch {
+          // Ignore malformed messages silently
         }
       };
 
-      wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error);
-        const wsError = new Error('WebSocket connection error');
-        onError?.(wsError);
+      wsRef.current.onerror = () => {
+        const now = Date.now();
+        // Throttle: only log/report once per 30 seconds
+        if (now - lastErrorTimeRef.current > 30_000) {
+          lastErrorTimeRef.current = now;
+          if (!errorReportedRef.current) {
+            errorReportedRef.current = true;
+            console.warn('[Coach] WebSocket connection failed');
+            onError?.(new Error('WebSocket connection error'));
+          }
+        }
       };
 
       wsRef.current.onclose = () => {
-        console.log('WebSocket disconnected');
         setIsConnected(false);
         wsRef.current = null;
-        onDisconnect?.();
 
-        // Attempt reconnection
+        if (!enabledRef.current) {
+          onDisconnect?.();
+          return;
+        }
+
+        // Attempt reconnection with exponential backoff
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
           reconnectAttemptsRef.current += 1;
-          const backoffMs = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 10000);
-          setTimeout(() => connect(), backoffMs);
+          const backoffMs = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 15000);
+          reconnectTimerRef.current = setTimeout(() => {
+            if (enabledRef.current) connect();
+          }, backoffMs);
+        } else {
+          // Max retries reached — notify once
+          if (!errorReportedRef.current) {
+            errorReportedRef.current = true;
+            onDisconnect?.();
+          }
         }
       };
-    } catch (error) {
-      console.error('Failed to create WebSocket:', error);
-      onError?.(error as Error);
+    } catch {
+      console.warn('[Coach] Failed to create WebSocket');
+      if (!errorReportedRef.current) {
+        errorReportedRef.current = true;
+        onError?.(new Error('Failed to create WebSocket'));
+      }
     }
-  }, [enabled, serverUrl, clientId, onMessage, onError, onConnect, onDisconnect]);
+  }, [serverUrl, clientId, onMessage, onError, onConnect, onDisconnect]);
 
   // Send landmarks to server
   const sendLandmarks = useCallback((landmarks: PoseLandmark[]) => {
@@ -126,15 +156,22 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
         method: 'POST',
       });
       const data = await response.json();
-      console.log('Session reset:', data);
       setLastResponse(null);
-    } catch (error) {
-      console.error('Failed to reset session:', error);
+      reconnectAttemptsRef.current = 0;
+      errorReportedRef.current = false;
+      return data;
+    } catch {
+      // Silent — server may be unreachable
     }
   }, [serverUrl, clientId]);
 
   // Disconnect WebSocket
   const disconnect = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    reconnectAttemptsRef.current = maxReconnectAttempts; // prevent reconnect
     if (wsRef.current) {
       wsRef.current.close();
       wsRef.current = null;

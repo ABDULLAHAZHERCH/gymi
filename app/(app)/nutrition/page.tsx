@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Plus } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
@@ -23,19 +23,33 @@ import SearchBar from '@/components/ui/SearchBar';
 import FilterPanel, { FilterOptions } from '@/components/features/FilterPanel';
 import { searchAndFilterMeals } from '@/lib/utils/search';
 import { triggerMealNotifications } from '@/lib/notificationTriggers';
+import { useCachedData } from '@/lib/hooks/useCachedData';
 
 export default function NutritionPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const { isOnline, setUid } = useOffline();
 
-  const [meals, setMeals] = useState<Meal[]>([]);
-  const [mealLoading, setMealLoading] = useState(true);
-  const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
+  // Cached data fetching — instant on revisit
+  const {
+    data: meals = [],
+    loading: mealLoading,
+    setData: setMeals,
+  } = useCachedData<Meal[]>({
+    key: `meals:${user?.uid}`,
+    fetcher: useCallback(async () => {
+      if (isOnline) {
+        return getMeals(user!.uid);
+      } else {
+        return getMealsOffline(user!.uid);
+      }
+    }, [user, isOnline]),
+    enabled: !!user,
+  });
 
+  const [editingMeal, setEditingMeal] = useState<Meal | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
-
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<FilterOptions>({});
 
@@ -43,42 +57,6 @@ export default function NutritionPage() {
   useEffect(() => {
     if (user) setUid(user.uid);
   }, [user, setUid]);
-
-  // Fetch meals on mount — online from Firebase, offline from IndexedDB
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchMeals = async () => {
-      try {
-        if (isOnline) {
-          const data = await getMeals(user.uid);
-          setMeals(data);
-        } else {
-          const offlineData = await getMealsOffline(user.uid);
-          setMeals(offlineData);
-          if (offlineData.length > 0) {
-            showToast('Showing offline data', 'info');
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching meals:', error);
-        // Fallback to offline data on network errors
-        try {
-          const offlineData = await getMealsOffline(user.uid);
-          setMeals(offlineData);
-          if (offlineData.length > 0) {
-            showToast('Network error — showing cached data', 'warning');
-          }
-        } catch {
-          // IndexedDB also failed
-        }
-      } finally {
-        setMealLoading(false);
-      }
-    };
-
-    fetchMeals();
-  }, [user, isOnline, showToast]);
 
   // Filter and search meals
   const filteredMeals = useMemo(() => {
@@ -113,7 +91,7 @@ export default function NutritionPage() {
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-      setMeals([newMeal, ...meals]);
+      setMeals((prev = []) => [newMeal, ...prev]);
       setIsModalOpen(false);
       if (isOnline) {
         showToast('Meal added successfully!', 'success');
@@ -151,8 +129,8 @@ export default function NutritionPage() {
         showToast('Updated offline — will sync when online', 'info');
       }
 
-      setMeals(
-        meals.map((m) =>
+      setMeals((prev = []) =>
+        prev.map((m) =>
           m.id === editingMeal.id
             ? { ...m, ...data, updatedAt: new Date() }
             : m
@@ -185,7 +163,7 @@ export default function NutritionPage() {
         showToast('Deleted offline — will sync when online', 'info');
       }
 
-      setMeals(meals.filter((m) => m.id !== mealId));
+      setMeals((prev = []) => prev.filter((m) => m.id !== mealId));
       if (isOnline) showToast('Meal deleted successfully!', 'success');
     } catch (error: any) {
       console.error('Error deleting meal:', error);

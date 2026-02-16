@@ -1,2 +1,2 @@
-// Re-export the websocket-enabled coach page with FastAPI integration
-export { default } from './page-websocket';
+import CoachPage from './page-websocket';
+export default CoachPage;

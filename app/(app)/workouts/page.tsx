@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import { Plus } from 'lucide-react';
 import { useAuth } from '@/components/providers/AuthProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
@@ -24,6 +24,7 @@ import FilterPanel, { FilterOptions } from '@/components/features/FilterPanel';
 import { searchAndFilterWorkouts } from '@/lib/utils/search';
 import { triggerWorkoutNotifications } from '@/lib/notificationTriggers';
 import { useUnits } from '@/components/providers/UnitProvider';
+import { useCachedData } from '@/lib/hooks/useCachedData';
 
 export default function WorkoutsPage() {
   const { user } = useAuth();
@@ -31,13 +32,26 @@ export default function WorkoutsPage() {
   const { showToast } = useToast();
   const { isOnline, setUid } = useOffline();
 
-  const [workouts, setWorkouts] = useState<Workout[]>([]);
-  const [workoutLoading, setWorkoutLoading] = useState(true);
-  const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
+  // Cached data fetching — instant on revisit
+  const {
+    data: workouts = [],
+    loading: workoutLoading,
+    setData: setWorkouts,
+  } = useCachedData<Workout[]>({
+    key: `workouts:${user?.uid}`,
+    fetcher: useCallback(async () => {
+      if (isOnline) {
+        return getWorkouts(user!.uid);
+      } else {
+        return getWorkoutsOffline(user!.uid);
+      }
+    }, [user, isOnline]),
+    enabled: !!user,
+  });
 
+  const [editingWorkout, setEditingWorkout] = useState<Workout | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [formLoading, setFormLoading] = useState(false);
-
   const [searchQuery, setSearchQuery] = useState('');
   const [filters, setFilters] = useState<FilterOptions>({});
 
@@ -45,42 +59,6 @@ export default function WorkoutsPage() {
   useEffect(() => {
     if (user) setUid(user.uid);
   }, [user, setUid]);
-
-  // Fetch workouts on mount — online from Firebase, offline from IndexedDB
-  useEffect(() => {
-    if (!user) return;
-
-    const fetchWorkouts = async () => {
-      try {
-        if (isOnline) {
-          const data = await getWorkouts(user.uid);
-          setWorkouts(data);
-        } else {
-          const offlineData = await getWorkoutsOffline(user.uid);
-          setWorkouts(offlineData);
-          if (offlineData.length > 0) {
-            showToast('Showing offline data', 'info');
-          }
-        }
-      } catch (error) {
-        console.error('Error fetching workouts:', error);
-        // Fallback to offline data on network errors
-        try {
-          const offlineData = await getWorkoutsOffline(user.uid);
-          setWorkouts(offlineData);
-          if (offlineData.length > 0) {
-            showToast('Network error — showing cached data', 'warning');
-          }
-        } catch {
-          // IndexedDB also failed
-        }
-      } finally {
-        setWorkoutLoading(false);
-      }
-    };
-
-    fetchWorkouts();
-  }, [user, isOnline, showToast]);
 
   // Filter and search workouts
   const filteredWorkouts = useMemo(() => {
@@ -116,7 +94,7 @@ export default function WorkoutsPage() {
         createdAt: new Date(),
         updatedAt: new Date(),
       };
-      setWorkouts([newWorkout, ...workouts]);
+      setWorkouts((prev = []) => [newWorkout, ...prev]);
       setIsModalOpen(false);
       if (isOnline) {
         showToast('Workout added successfully!', 'success');
@@ -145,8 +123,8 @@ export default function WorkoutsPage() {
         showToast('Updated offline — will sync when online', 'info');
       }
 
-      setWorkouts(
-        workouts.map((w) =>
+      setWorkouts((prev = []) =>
+        prev.map((w) =>
           w.id === editingWorkout.id
             ? { ...w, ...data, updatedAt: new Date() }
             : w
@@ -179,7 +157,7 @@ export default function WorkoutsPage() {
         showToast('Deleted offline — will sync when online', 'info');
       }
 
-      setWorkouts(workouts.filter((w) => w.id !== workoutId));
+      setWorkouts((prev = []) => prev.filter((w) => w.id !== workoutId));
       if (isOnline) showToast('Workout deleted successfully!', 'success');
     } catch (error: any) {
       console.error('Error deleting workout:', error);

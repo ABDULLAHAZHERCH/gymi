@@ -66,7 +66,7 @@ export async function createNotification(
       read: false,
       createdAt: Timestamp.now(),
     });
-    cacheInvalidate(`notifications:${uid}`, `unread:${uid}`);
+    cacheInvalidate(`notifications:${uid}:`, `unread:${uid}`);
     return docRef.id;
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to create notification'));
@@ -122,7 +122,7 @@ export async function markAsRead(
       read: true,
       readAt: Timestamp.now(),
     });
-    cacheInvalidate(`notifications:${uid}`, `unread:${uid}`);
+    cacheInvalidate(`notifications:${uid}:`, `unread:${uid}`);
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to mark notification as read'));
   }
@@ -145,7 +145,7 @@ export async function markAllAsRead(uid: string): Promise<void> {
       batch.update(d.ref, { read: true, readAt: now });
     });
     await batch.commit();
-    cacheInvalidate(`notifications:${uid}`, `unread:${uid}`);
+    cacheInvalidate(`notifications:${uid}:`, `unread:${uid}`);
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to mark all as read'));
   }
@@ -161,7 +161,7 @@ export async function deleteNotification(
   try {
     const docRef = doc(db, 'users', uid, 'notifications', notificationId);
     await deleteDoc(docRef);
-    cacheInvalidate(`notifications:${uid}`, `unread:${uid}`);
+    cacheInvalidate(`notifications:${uid}:`, `unread:${uid}`);
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to delete notification'));
   }
@@ -187,7 +187,7 @@ export async function deleteOldNotifications(
     const batch = writeBatch(db);
     snapshot.docs.forEach((d) => batch.delete(d.ref));
     await batch.commit();
-    cacheInvalidate(`notifications:${uid}`, `unread:${uid}`);
+    cacheInvalidate(`notifications:${uid}:`, `unread:${uid}`);
     return snapshot.size;
   } catch (error) {
     console.error('Error cleaning old notifications:', error);

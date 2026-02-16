@@ -4,11 +4,15 @@ import {
   signInWithEmailAndPassword,
   signOut,
   updateProfile,
+  GoogleAuthProvider,
+  signInWithPopup,
   User,
 } from 'firebase/auth';
 import { doc, setDoc, getDoc, updateDoc } from 'firebase/firestore';
 import { UserProfile } from './types/firestore';
 import { getErrorMessage } from './utils/errorMessages';
+
+const googleProvider = new GoogleAuthProvider();
 
 /**
  * Auth Service: Handle user authentication
@@ -47,6 +51,24 @@ export async function logoutUser(): Promise<void> {
     await signOut(auth);
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Logout failed'));
+  }
+}
+
+/**
+ * Google Sign-In / Sign-Up
+ * Returns the Firebase user and whether they are a new user (needs onboarding).
+ */
+export async function signInWithGoogle(): Promise<{ user: User; isNewUser: boolean }> {
+  try {
+    const result = await signInWithPopup(auth, googleProvider);
+    const user = result.user;
+
+    // Check if user profile exists in Firestore
+    const profileExists = await hasUserProfile(user.uid);
+
+    return { user, isNewUser: !profileExists };
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Google sign-in failed'));
   }
 }
 

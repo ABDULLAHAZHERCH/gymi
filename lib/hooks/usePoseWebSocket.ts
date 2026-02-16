@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback, useState } from 'react';
+import { config } from '@/lib/config';
 
 export interface PoseLandmark {
   x: number;
@@ -10,11 +11,11 @@ export interface PoseLandmark {
 }
 
 export interface FormCorrectionResponse {
-  state: string;
-  current_exercise: string | null;
+  state: 'idle' | 'scanning' | 'active';
+  current_exercise: 'SQUAT' | 'PUSHUP' | 'BICEP_CURL' | null;
   exercise_display: string;
   rep_count: number;
-  rep_phase: string;
+  rep_phase: 'idle' | 'up' | 'down' | 'static';
   is_rep_valid: boolean;
   violations: string[];
   corrections: string[];
@@ -25,7 +26,6 @@ export interface FormCorrectionResponse {
 }
 
 interface UsePoseWebSocketOptions {
-  serverUrl?: string;
   clientId?: string;
   enabled?: boolean;
   onMessage?: (response: FormCorrectionResponse) => void;
@@ -36,8 +36,7 @@ interface UsePoseWebSocketOptions {
 
 export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
   const {
-    serverUrl = process.env.NEXT_PUBLIC_FORM_COACH_URL || 'wss://exercise-form-backend.onrender.com',
-    clientId = `gymi-${Date.now()}`,
+    clientId: externalClientId,
     enabled = true,
     onMessage,
     onError,
@@ -47,45 +46,101 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
 
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [isConnecting, setIsConnecting] = useState(false);
   const [lastResponse, setLastResponse] = useState<FormCorrectionResponse | null>(null);
   const reconnectAttemptsRef = useRef(0);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastErrorTimeRef = useRef(0);
   const errorReportedRef = useRef(false);
   const enabledRef = useRef(enabled);
+  const connectingRef = useRef(false);
+  const pendingMessagesRef = useRef<string[]>([]);
+  const mountedRef = useRef(true);
   const maxReconnectAttempts = 5;
+
+  // Stable client ID across renders
+  const clientIdRef = useRef(
+    externalClientId || `gymi_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
+  );
+
+  // Keep refs stable for callbacks (avoid re-creating WS on callback changes)
+  const callbacksRef = useRef({ onMessage, onError, onConnect, onDisconnect });
+  useEffect(() => {
+    callbacksRef.current = { onMessage, onError, onConnect, onDisconnect };
+  }, [onMessage, onError, onConnect, onDisconnect]);
 
   // Keep enabledRef in sync
   useEffect(() => {
     enabledRef.current = enabled;
   }, [enabled]);
 
+  // Disconnect WebSocket
+  const disconnect = useCallback(() => {
+    if (reconnectTimerRef.current) {
+      clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
+    }
+    connectingRef.current = false;
+    reconnectAttemptsRef.current = maxReconnectAttempts; // prevent reconnect
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+    setIsConnected(false);
+    setIsConnecting(false);
+  }, []);
+
   // Connect to WebSocket
   const connect = useCallback(() => {
-    if (!enabledRef.current || wsRef.current) return;
+    if (connectingRef.current) return;
+    if (wsRef.current?.readyState === WebSocket.OPEN) return;
+
+    // Clean up any existing connection first
+    if (wsRef.current) {
+      wsRef.current.close();
+      wsRef.current = null;
+    }
+
+    connectingRef.current = true;
+    setIsConnecting(true);
+    errorReportedRef.current = false;
 
     try {
-      const wsUrl = `${serverUrl}/api/ws/pose/${clientId}`;
-      wsRef.current = new WebSocket(wsUrl);
+      const wsUrl = `${config.api.wsUrl}${config.api.endpoints.ws.pose}/${clientIdRef.current}`;
+      const ws = new WebSocket(wsUrl);
 
-      wsRef.current.onopen = () => {
+      ws.onopen = () => {
+        if (!mountedRef.current) {
+          ws.close();
+          return;
+        }
+        connectingRef.current = false;
         setIsConnected(true);
+        setIsConnecting(false);
         reconnectAttemptsRef.current = 0;
         errorReportedRef.current = false;
-        onConnect?.();
+        callbacksRef.current.onConnect?.();
+
+        // Flush queued messages
+        while (pendingMessagesRef.current.length > 0) {
+          const msg = pendingMessagesRef.current.shift();
+          if (msg) ws.send(msg);
+        }
       };
 
-      wsRef.current.onmessage = (event) => {
+      ws.onmessage = (event) => {
+        if (!mountedRef.current) return;
         try {
           const response: FormCorrectionResponse = JSON.parse(event.data);
           setLastResponse(response);
-          onMessage?.(response);
+          callbacksRef.current.onMessage?.(response);
         } catch {
           // Ignore malformed messages silently
         }
       };
 
-      wsRef.current.onerror = () => {
+      ws.onerror = () => {
+        if (!mountedRef.current) return;
         const now = Date.now();
         // Throttle: only log/report once per 30 seconds
         if (now - lastErrorTimeRef.current > 30_000) {
@@ -93,68 +148,87 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
           if (!errorReportedRef.current) {
             errorReportedRef.current = true;
             console.warn('[Coach] WebSocket connection failed');
-            onError?.(new Error('WebSocket connection error'));
+            callbacksRef.current.onError?.(new Error('WebSocket connection error'));
           }
         }
       };
 
-      wsRef.current.onclose = () => {
+      ws.onclose = () => {
+        if (!mountedRef.current) return;
+        connectingRef.current = false;
         setIsConnected(false);
+        setIsConnecting(false);
         wsRef.current = null;
 
         if (!enabledRef.current) {
-          onDisconnect?.();
+          callbacksRef.current.onDisconnect?.();
           return;
         }
 
         // Attempt reconnection with exponential backoff
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
           reconnectAttemptsRef.current += 1;
-          const backoffMs = Math.min(1000 * Math.pow(2, reconnectAttemptsRef.current), 15000);
+          const backoffMs = Math.min(
+            1000 * Math.pow(2, reconnectAttemptsRef.current),
+            15000
+          );
           reconnectTimerRef.current = setTimeout(() => {
-            if (enabledRef.current) connect();
+            if (enabledRef.current && mountedRef.current) connect();
           }, backoffMs);
         } else {
           // Max retries reached — notify once
           if (!errorReportedRef.current) {
             errorReportedRef.current = true;
-            onDisconnect?.();
+            callbacksRef.current.onDisconnect?.();
           }
         }
       };
+
+      wsRef.current = ws;
     } catch {
+      connectingRef.current = false;
+      setIsConnecting(false);
       console.warn('[Coach] Failed to create WebSocket');
       if (!errorReportedRef.current) {
         errorReportedRef.current = true;
-        onError?.(new Error('Failed to create WebSocket'));
+        callbacksRef.current.onError?.(new Error('Failed to create WebSocket'));
       }
     }
-  }, [serverUrl, clientId, onMessage, onError, onConnect, onDisconnect]);
+  }, []); // Stable — reads config/clientId from refs/module scope
 
   // Send landmarks to server
-  const sendLandmarks = useCallback((landmarks: PoseLandmark[]) => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      return;
-    }
+  const sendLandmarks = useCallback(
+    (landmarks: PoseLandmark[], timestamp?: number) => {
+      const message = JSON.stringify({
+        landmarks: landmarks.map((lm) => ({
+          x: lm.x,
+          y: lm.y,
+          z: lm.z,
+          visibility: lm.visibility,
+        })),
+        timestamp: timestamp ?? Date.now(),
+      });
 
-    try {
-      wsRef.current.send(
-        JSON.stringify({
-          landmarks,
-          timestamp: Date.now(),
-        })
-      );
-    } catch (error) {
-      console.error('Failed to send landmarks:', error);
-    }
-  }, []);
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(message);
+      } else {
+        // Queue up to 5 messages for when connection opens
+        pendingMessagesRef.current.push(message);
+        if (pendingMessagesRef.current.length > 5) {
+          pendingMessagesRef.current.shift();
+        }
+      }
+    },
+    []
+  );
 
   // Reset session on server
   const resetSession = useCallback(async () => {
     try {
-      const response = await fetch(`${serverUrl}/reset/${clientId}`, {
-        method: 'POST',
-      });
+      const response = await fetch(
+        `${config.api.baseUrl}${config.api.endpoints.reset}/${clientIdRef.current}`,
+        { method: 'POST' }
+      );
       const data = await response.json();
       setLastResponse(null);
       reconnectAttemptsRef.current = 0;
@@ -163,38 +237,41 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
     } catch {
       // Silent — server may be unreachable
     }
-  }, [serverUrl, clientId]);
-
-  // Disconnect WebSocket
-  const disconnect = useCallback(() => {
-    if (reconnectTimerRef.current) {
-      clearTimeout(reconnectTimerRef.current);
-      reconnectTimerRef.current = null;
-    }
-    reconnectAttemptsRef.current = maxReconnectAttempts; // prevent reconnect
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-      setIsConnected(false);
-    }
   }, []);
 
-  // Connect on mount, disconnect on unmount
+  // Mount/unmount lifecycle
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      if (reconnectTimerRef.current) {
+        clearTimeout(reconnectTimerRef.current);
+      }
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+      connectingRef.current = false;
+    };
+  }, []);
+
+  // Auto-connect/disconnect based on `enabled` prop
   useEffect(() => {
     if (enabled) {
       connect();
-    }
-
-    return () => {
+    } else {
       disconnect();
-    };
+    }
   }, [enabled, connect, disconnect]);
 
   return {
     isConnected,
+    isConnecting,
     sendLandmarks,
     lastResponse,
     resetSession,
-    clientId,
+    connect,
+    disconnect,
+    clientId: clientIdRef.current,
   };
 }

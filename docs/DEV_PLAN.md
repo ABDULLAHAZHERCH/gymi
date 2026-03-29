@@ -1214,6 +1214,653 @@ Centralized logic that checks conditions and creates notifications. Called after
 
 ---
 
+### Phase 8: AI Food Recognition (Gemini Flash) - COMPLETE ✅
+
+**Goal:** Let users snap a photo of their meal and auto-fill nutrition data using Google Gemini 1.5 Flash's vision capabilities.
+
+#### 8.1: Overview & Rationale
+
+Users currently enter meal names, calories, and macros manually. This feature adds an **"Scan Meal"** button that:
+1. Opens the device camera or file picker to capture/upload a meal photo.
+2. Sends the image (base64) to a **Next.js API Route** (server-side).
+3. The API Route calls **Google Gemini 1.5 Flash** with a structured prompt requesting JSON output.
+4. Returns identified food items with estimated calories and macros.
+5. Pre-fills the `MealForm` fields so the user can review, adjust, and save.
+
+**Why Gemini 1.5 Flash?**
+- **Multimodal native** — handles image + text prompts in one call.
+- **Fast & cheap** — Flash variant is optimized for speed and low cost (~$0.075/1M input tokens for images).
+- **Structured output** — can reliably return JSON when prompted correctly.
+- **Google ecosystem** — consistent with existing Firebase/GCP stack.
+- **No training needed** — general-purpose vision model, no custom ML pipeline to maintain.
+- **Good food recognition** — performs well on diverse cuisines and plated meals.
+
+**Alternatives Considered:**
+
+| Approach | Pros | Cons | Verdict |
+|----------|------|------|---------|
+| **Gemini 1.5 Flash** | Fast, cheap, multimodal, JSON output, Google stack | Estimates are approximations | ✅ **Best fit** |
+| **GPT-4o (OpenAI)** | Excellent vision | More expensive, different vendor | ❌ Cost |
+| **Custom TF.js model** | Runs client-side, offline | Needs training data, limited food coverage | ❌ Complexity |
+| **Clarifai Food API** | Specialized food model | Paid, another vendor, no macro estimation | ❌ Limited |
+| **LogMeal API** | Food-specific, macro data | Paid SaaS, rate limits, vendor lock-in | ❌ Cost |
+| **Nutritionix API** | Large food database | Text-based only, no image recognition | ❌ No vision |
+
+#### 8.2: Architecture
+
+```
+┌──────────────┐     base64 image      ┌─────────────────────┐
+│  Client      │ ───────────────────►   │  Next.js API Route  │
+│  (MealForm)  │                        │  /api/food-recognize│
+│              │ ◄───────────────────   │                     │
+│              │   JSON food data       │  - Validates input  │
+└──────────────┘                        │  - Calls Gemini API │
+                                        │  - Parses response  │
+                                        │  - Returns JSON     │
+                                        └────────┬────────────┘
+                                                 │
+                                                 ▼
+                                        ┌─────────────────────┐
+                                        │  Google Gemini API   │
+                                        │  (gemini-1.5-flash)  │
+                                        │                     │
+                                        │  Image + Prompt     │
+                                        │  → Structured JSON  │
+                                        └─────────────────────┘
+```
+
+**Key Design Decisions:**
+- **Server-side API Route** (`app/api/food-recognize/route.ts`) — keeps the Gemini API key secret (not `NEXT_PUBLIC_`).
+- **Base64 encoding** — avoids needing Firebase Storage (Blaze plan) for image uploads.
+- **Image size limit** — max 4MB base64 payload to stay within Gemini's limits and keep requests fast.
+- **No image persistence** — image is used for analysis only, not stored. Privacy-friendly.
+
+#### 8.3: API Route Design
+
+**Endpoint:** `POST /api/food-recognize`
+
+**Request Body:**
+```typescript
+{
+  image: string;       // base64-encoded image (JPEG/PNG/WebP)
+  mimeType?: string;   // "image/jpeg" | "image/png" | "image/webp" (default: "image/jpeg")
+}
+```
+
+**Response (Success — 200):**
+```typescript
+{
+  success: true;
+  data: {
+    food_name: string;      // e.g., "Grilled Chicken Salad"
+    calories: number;       // estimated kcal
+    protein: number;        // grams
+    carbs: number;          // grams
+    fat: number;            // grams
+    items: string[];        // detected food items, e.g., ["grilled chicken breast", "mixed greens", "cherry tomatoes", "olive oil dressing"]
+    confidence: string;     // "high" | "medium" | "low"
+  }
+}
+```
+
+**Response (Error — 400/500):**
+```typescript
+{
+  success: false;
+  error: string;   // Human-readable error message
+}
+```
+
+**Gemini Prompt Strategy:**
+```
+Analyze this food image. Identify all visible food items and estimate the total nutritional content for the entire meal.
+
+Respond ONLY with valid JSON in this exact format, no markdown, no explanation:
+{
+  "food_name": "<short descriptive name for the overall meal>",
+  "calories": <estimated total calories as integer>,
+  "protein": <estimated grams of protein as integer>,
+  "carbs": <estimated grams of carbs as integer>,
+  "fat": <estimated grams of fat as integer>,
+  "items": ["<item 1>", "<item 2>", ...],
+  "confidence": "<high|medium|low>"
+}
+
+Guidelines:
+- Estimate portion sizes based on visual cues (plate size, relative proportions).
+- If multiple food items are visible, sum their estimated nutritional values.
+- Use "high" confidence if food is clearly identifiable, "medium" if partially obscured, "low" if uncertain.
+- If the image does not contain food, return: {"error": "No food detected in image"}
+```
+
+#### 8.4: Environment Variables
+
+```env
+# .env.local (server-side only — NO NEXT_PUBLIC_ prefix)
+GEMINI_API_KEY=your_gemini_api_key_here
+```
+
+- Add to Vercel environment variables for production.
+- Free tier: 15 RPM, 1M tokens/min, 1500 req/day — sufficient for MVP.
+
+#### 8.5: File Structure
+
+```
+app/
+  └── api/
+      └── food-recognize/
+          └── route.ts          # POST handler — Gemini API call
+
+lib/
+  └── services/
+      └── gemini.ts             # Gemini client wrapper (API key, model config, prompt)
+
+components/
+  └── features/
+      └── FoodScanner.tsx       # Camera/upload UI + scan button + result preview
+```
+
+#### 8.6: Client-Side Integration
+
+**`FoodScanner.tsx` Component:**
+- Renders inside `MealForm` as an optional "Scan Meal" button.
+- Opens file picker (`accept="image/*"` with `capture="environment"` for mobile camera).
+- Converts selected image to base64.
+- Shows loading spinner during API call.
+- On success: pre-fills `MealForm` fields (mealName, items, calories, protein, carbs, fat).
+- On error: shows toast with error message.
+- User can still edit all pre-filled values before saving.
+
+**UX Flow:**
+```
+1. User taps "Scan Meal" on nutrition page
+2. Camera/file picker opens
+3. User captures or selects meal photo
+4. Image preview shown + "Analyzing..." spinner
+5. API returns food data
+6. MealForm auto-fills with results
+7. User reviews, adjusts values if needed
+8. User taps "Save Meal" as normal
+```
+
+#### 8.7: Implementation Steps
+
+| Step | Task | File(s) |
+|------|------|---------|
+| 1 | Install `@google/generative-ai` package | `package.json` | ✅ |
+| 2 | Add `GEMINI_API_KEY` to `.env.local` and Vercel | Environment config | ✅ |
+| 3 | Create Gemini client wrapper | `lib/services/gemini.ts` | ✅ |
+| 4 | Create API Route handler | `app/api/food-recognize/route.ts` | ✅ |
+| 5 | Build FoodScanner component | `components/features/FoodScanner.tsx` | ✅ |
+| 6 | Integrate FoodScanner into MealForm | `components/features/MealForm.tsx` | ✅ |
+| 7 | Add loading/error states | FoodScanner + MealForm | ✅ |
+| 8 | Add health-check endpoint for diagnostics | `app/api/food-recognize/health/route.ts` | ✅ |
+| 9 | Build validation and production deploy | Build + Vercel | ✅ |
+
+#### 8.8: Edge Cases & Error Handling
+
+- **No food in image** — Gemini returns error object → show "No food detected" toast.
+- **Blurry/dark image** — Low confidence result → show warning: "Estimates may be inaccurate."
+- **Multiple dishes** — Gemini sums all items → user can adjust.
+- **API rate limit** — 429 response → show "Too many requests, try again in a moment."
+- **Network error** — Catch fetch failure → show "Network error" toast.
+- **Invalid JSON from Gemini** — Parse error → show "Could not analyze image" toast.
+- **Image too large** — Client-side check (>4MB) → show "Image too large, please use a smaller image."
+- **Non-image file** — MIME type validation on both client and server.
+
+#### 8.9: Security Considerations
+
+- **API key server-side only** — `GEMINI_API_KEY` (no `NEXT_PUBLIC_` prefix), accessed only in API Route.
+- **Input validation** — Verify base64 string and MIME type before forwarding to Gemini.
+- **Rate limiting** — Consider adding per-user rate limiting (e.g., 10 scans/day) to prevent abuse.
+- **No image storage** — Image is processed and discarded. Never stored in Firestore or any storage.
+- **Payload size** — Enforce max 4MB request body in API route.
+
+#### 8.10: Future Enhancements (Out of Scope for MVP)
+
+- [ ] Scan history — save past scan results for quick re-use
+- [ ] Multi-meal detection — split into separate meal entries
+- [ ] Barcode scanning — use camera to scan packaged food barcodes
+- [ ] Portion size adjustment slider
+- [ ] Offline scan queue — queue images when offline, scan when online
+- [ ] Favorites from scans — save frequently scanned meals as templates
+
+#### 8.11: Testing Checklist
+
+- [ ] API Route returns correct JSON for clear food images
+- [ ] Handles non-food images gracefully
+- [ ] Handles malformed/missing request body
+- [ ] Client-side image preview works on mobile + desktop
+- [ ] Mobile camera capture works (`capture="environment"`)
+- [ ] Pre-fills MealForm fields correctly
+- [ ] User can edit pre-filled values before saving
+- [ ] Loading state shows during API call
+- [ ] Error toast shows for failures
+- [ ] API key is not exposed to client
+- [ ] Works on Vercel production deployment
+- [ ] Image size limit enforced (4MB)
+
+---
+
+### Phase 9: Personalized Workout Program Creation (Gemini AI) - CORE IMPLEMENTATION COMPLETE ✅
+
+**Goal:** Let users receive AI-generated workout programs personalized based on their goals, fitness level, available equipment, and time constraints. Users answer a pre-launch questionnaire, and Gemini creates an optimized multi-week program with daily exercises, sets/reps, and progressive overload.
+
+#### 9.1: Overview & Rationale
+
+Current GYMI allows users to log workouts and see stats, but doesn't guide them on *what* to do. This feature adds:
+1. **Pre-program Questionnaire** — Collects user preferences (goals, experience, equipment, gym/home, days/week, session length).
+2. **Gemini Program Generation** — AI creates a personalized workout plan leveraging user's goals + existing fitness data.
+3. **Program UI** — Display generated program week-by-week, day-by-day, with exercise details and progression.
+4. **Log Against Program** — Users log workouts directly against generated program sessions to track adherence and results.
+
+**Why This Matters:**
+- Users get guidance without needing a personal trainer.
+- Program adapts to their constraints (equipment, time, location).
+- Combines user preferences + historical data (stats, PRs, goals) for better personalization.
+- Improves engagement: clear weekly roadmap vs. open-ended logging.
+
+**Why Gemini?**
+- Understands complex multi-week program design (periodization, progressive overload, volume).
+- Can incorporate user context (goals, equipment, experience level, time).
+- Generates structured JSON (weeks, days, exercises, sets/reps, notes).
+- Faster + cheaper than GPT-4o for this use case.
+
+#### 9.2: Architecture
+
+```
+┌──────────────────────┐
+│ User Journey         │
+├──────────────────────┤
+│ 1. Tap "Create       │
+│    Program" button   │
+└──────┬───────────────┘
+       ▼
+┌──────────────────────┐      questionnaire      ┌──────────────────┐
+│ Themed Questionnaire │ ────────────────────►   │ Build Prompt     │
+│ Card (/programs/create)                        │ + Fetch User     │
+│ • Goals              │                         │ Data from DB     │
+│ • Experience         │                         │ (stats, goals,   │
+│ • Equipment          │                         │  PRs, etc.)      │
+│ • Location           │                         └────────┬─────────┘
+│ • Days/week          │                                  ▼
+│ • Session length     │                         ┌──────────────────┐
+│ • Injuries/notes     │                         │ Gemini API Call  │
+└──────────────────────┘                         │ (Structured JSON)│
+       ▲                                         │ Multi-week Plan  │
+       │                                         └────────┬─────────┘
+       │                                                  ▼
+       │            ┌──────────────────────┐   ┌──────────────────┐
+       └────────────│ Program Page Display  │◄──│ Save to Firestore│
+                    │ • Week selector       │   │ /users/{uid}/    │
+                    │ • Day-by-day layout   │   │ workoutPrograms  │
+                    │ • Exercise details    │   │ (with metadata)  │
+                    │ • Log session button  │   └──────────────────┘
+                    └──────────────────────┘
+```
+
+**Key Design Decisions:**
+- **Client-side questionnaire** → Server-side program generation (API route for API key security).
+- **Firestore storage** → Programs stored in `/users/{uid}/workoutPrograms/` subcollection.
+- **Program structure** → Weeks array → Days array → Sessions (exercises with sets/reps/intensity).
+- **Metadata tracking** → Capture generation date, parameters used, user feedback (helpful? too hard? too easy?).
+- **Non-destructive** → Generating a new program doesn't delete old ones; users can browse history.
+
+#### 9.3: Data Structures
+
+**WorkoutProgram (Firestore Document):**
+```typescript
+{
+  id: string;                        // Auto-generated doc ID
+  userId: string;                    // Reference to user
+  programName: string;               // e.g., "6-Week Strength Build"
+  description: string;               // AI-generated summary
+  createdAt: Timestamp;              // Generation date
+  updatedAt: Timestamp;              // Last edit
+  
+  // Metadata
+  metadata: {
+    goal: "muscle_gain" | "fat_loss" | "strength" | "endurance" | "general_fitness";
+    experienceLevel: "beginner" | "intermediate" | "advanced";
+    equipmentAccess: "full_gym" | "home_equipment" | "minimal" | "bodyweight_only";
+    location: "gym" | "home" | "both";
+    daysPerWeek: number;             // 3-7
+    sessionLengthMin: number;        // e.g., 60
+    injuries?: string;               // "lower back", "knee", etc.
+    notes?: string;
+  };
+  
+  // Program structure
+  plan: {
+    weeks: WorkoutWeek[];
+  };
+  
+  // Engagement
+  status: "active" | "completed" | "archived";
+  adherenceStats?: {
+    totalSessionsPlanned: number;
+    totalSessionsLogged: number;
+    adherencePercent: number;
+    lastLoggedDate?: Timestamp;
+  };
+}
+```
+
+**WorkoutWeek:**
+```typescript
+{
+  weekNumber: number;                // 1, 2, 3, ...
+  focusAreas: string[];              // e.g., ["Chest", "Back", "Triceps"]
+  days: WorkoutDay[];
+  notes?: string;                    // e.g., "Deload week, reduce volume by 20%"
+}
+```
+
+**WorkoutDay:**
+```typescript
+{
+  dayNumber: number;                 // 1-7 (within week)
+  dayName: string;                   // "Monday", "Chest Day", etc.
+  sessions: WorkoutSession[];        // May have morning + evening sessions
+}
+```
+
+**WorkoutSession:**
+```typescript
+{
+  sessionId: string;                 // Unique within program
+  sequenceNumber: number;            // Order within day
+  name: string;                      // e.g., "Main Strength Block"
+  exercises: Exercise[];
+  estimatedDuration: number;         // Minutes
+  intensity: "light" | "moderate" | "high";
+  notes?: string;                    // Rest periods, form tips, etc.
+  
+  // Link to user's logged workout (if any)
+  loggedWorkoutId?: string;          // Reference to /users/{uid}/workouts/{id}
+}
+```
+
+**Exercise (within program session):**
+```typescript
+{
+  exerciseId: string;                // Link to lib/data/exercises.ts
+  name: string;
+  muscleGroups: string[];
+  sets: number;
+  reps: string | number;             // "8-12" or 10
+  weight?: string;                   // "RPE 7-8", "65% 1RM", "bodyweight"
+  duration?: number;                 // For cardio/core
+  intensity?: string;                // "explosive", "controlled", "slow eccentric"
+  restSeconds?: number;
+  notes?: string;                    // Form cues, alternatives, progressions
+  progressionNotes?: string;         // How this exercise progresses over weeks
+}
+```
+
+#### 9.4: API Route Design
+
+**Endpoint:** `POST /api/workout-program`
+
+**Request Body:**
+```typescript
+{
+  questionnaire: {
+    goal: "muscle_gain" | "fat_loss" | "strength" | "endurance" | "general_fitness";
+    experienceLevel: "beginner" | "intermediate" | "advanced";
+    equipmentAccess: "full_gym" | "home_equipment" | "minimal" | "bodyweight_only";
+    location: "gym" | "home" | "both";
+    daysPerWeek: number;             // 3-7
+    sessionLengthMin: number;        // 30-120
+    injuries?: string;
+    notes?: string;
+  };
+  userContext?: {
+    recentPRs?: Record<string, number>;  // {"Bench Press": 225, "Deadlift": 405}
+    favoriteExercises?: string[];
+    weakPoints?: string[];
+    availableEquipment?: string[];
+  };
+}
+```
+
+**Response (Success — 200):**
+```typescript
+{
+  success: true;
+  data: {
+    programName: string;
+    description: string;
+    plan: {
+      weeks: WorkoutWeek[];          // Full structure
+    };
+    metadata: { ... };
+    createdAt: string;               // ISO timestamp
+  }
+}
+```
+
+**Response (Error — 400/500):**
+```typescript
+{
+  success: false;
+  error: string;
+}
+```
+
+#### 9.5: Gemini Prompt Strategy
+
+**Prompt Template:**
+```
+You are an expert fitness coach designing a personalized workout program.
+
+User Profile:
+- Goal: {goal} ({goal description})
+- Experience: {level}
+- Equipment: {equipment}
+- Location: {location}
+- Days/week: {daysPerWeek}
+- Session length: {sessionLengthMin} min
+- Constraints: {injuries}
+
+User History (if available):
+- Recent PRs: {recentPRs}
+- Favorite exercises: {favoriteExercises}
+- Known weak points: {weakPoints}
+
+Design a {daysPerWeek}-week workout program that:
+1. Uses ONLY equipment available to the user
+2. Fits into {sessionLengthMin} min sessions
+3. Emphasizes the stated goal with progressive overload
+4. Includes exercise variations for weak points
+5. Balances intensity and recovery
+6. Avoids exercises affecting injuries/constraints
+
+Structure the program as {daysPerWeek} workouts/week for {programWeeks} weeks.
+
+For each day, specify:
+- Exercise name (from standard exercises: Bench Press, Squats, Deadlifts, Rows, Pull-ups, Leg Press, etc.)
+- Sets x Reps or Target range
+- Weight (RPE scale, % of 1RM, or relative intensity)
+- Rest period between sets
+- Form notes or alternatives
+- Progression notes for future weeks
+
+Respond ONLY with valid JSON, no markdown:
+{
+  "programName": "<Short name>",
+  "description": "<2-3 sentence summary>",
+  "weeks": [
+    {
+      "weekNumber": 1,
+      "focusAreas": ["Muscle Group 1", "Muscle Group 2"],
+      "days": [
+        {
+          "dayNumber": 1,
+          "dayName": "<Monday>",
+          "sessions": [
+            {
+              "sessionId": "1_1_1",
+              "sequenceNumber": 1,
+              "name": "Main Strength Block",
+              "exercises": [
+                {
+                  "name": "<Exercise>",
+                  "muscleGroups": ["<Muscle>"],
+                  "sets": <number>,
+                  "reps": "<range or number>",
+                  "weight": "<RPE or % or description>",
+                  "restSeconds": <number>,
+                  "notes": "<Form tip or alternative>"
+                }
+              ],
+              "estimatedDuration": <minutes>,
+              "intensity": "<light|moderate|high>",
+              "notes": "<Optional session notes>"
+            }
+          ]
+        }
+      ],
+      "notes": "<Progression notes if deload or special week>"
+    }
+  ]
+}
+```
+
+#### 9.6: Environment & Configuration
+
+No new environment variables needed (uses existing `GEMINI_API_KEY`).
+
+#### 9.7: File Structure
+
+**New Files:**
+```
+lib/
+  ├── workoutPrograms.ts           # CRUD operations for programs
+  ├── types/
+  │   └── workoutProgram.ts        # TypeScript interfaces (WorkoutProgram, WorkoutWeek, etc.)
+  └── services/
+      └── programGeneration.ts     # Prompt building, Gemini call, response parsing
+
+app/
+  └── api/
+      └── workout-program/
+          ├── route.ts             # POST /api/workout-program
+          └── [programId]/route.ts  # GET /api/workout-program/[programId] (optional fetch)
+
+components/
+  ├── features/
+  │   ├── ProgramQuestionnaire.tsx # Themed questionnaire form
+  │   ├── ProgramDisplay.tsx       # Week/day/exercise viewer
+  │   ├── ProgramWeekView.tsx      # Week breakdown
+  │   ├── ProgramDayView.tsx       # Day exercises
+  │   └── ProgramSessionCard.tsx   # Single session (exercises list)
+  └── layout/
+      └── ProgramNav.tsx           # Sidebar navigation for program weeks
+
+app/
+  └── (app)/
+      └── programs/
+          ├── page.tsx             # List of user's programs
+          ├── create/page.tsx      # Questionnaire wizard
+          └── [programId]/
+              └── page.tsx         # Program detail + log buttons
+```
+
+**Modified Files:**
+```
+lib/types/firestore.ts             # Add WorkoutProgram + workout-linkage fields
+firebase/firestore.rules           # Add /workoutPrograms subcollection rules
+app/(app)/workouts/page.tsx        # Add in-page program/session logging integration
+```
+
+#### 9.8: Implementation Steps (Phases)
+
+**Phase A: Data Contract & Backend Setup (Steps 1-3)**
+- [x] Step 1: Add WorkoutProgram/Week/Day/Session/Exercise types to `lib/types/firestore.ts`
+- [x] Step 2: Update `firebase/firestore.rules` to allow `/users/{uid}/workoutPrograms/` CRUD
+- [x] Step 3: Create `lib/workoutPrograms.ts` service (CRUD: create, read, list, update, archive)
+
+**Phase B: Questionnaire & Input (Steps 4-5)**
+- [x] Step 4: Create `ProgramQuestionnaire.tsx` component (7-question themed form)
+- [x] Step 5: Add state management & validation (form submit → calls API)
+
+**Phase C: Gemini Generation (Steps 6-7)**
+- [x] Step 6: Create `lib/services/programGeneration.ts` (prompt builder, API call, response parser)
+- [x] Step 7: Create `app/api/workout-program/route.ts` (POST handler)
+
+**Phase D: Frontend UI (Steps 8-10)**
+- [x] Step 8: Create `ProgramDisplay.tsx` + `ProgramWeekView.tsx` + `ProgramDayView.tsx`
+- [x] Step 9: Create `app/(app)/programs/page.tsx` (list user's programs)
+- [x] Step 10: Create `app/(app)/programs/create/page.tsx` (launch questionnaire)
+
+**Phase E: Integration & Testing (Steps 11-14)**
+- [x] Step 11: Link program creation from `/programs` hub and create CTA
+- [x] Step 12: Add "Log Against Program" flow inside `/workouts` via in-page collapsible selector
+- [ ] Step 13: Write integration tests (questionnaire → API → display)
+- [x] Step 14: Deploy + manual testing on staging/prod
+
+#### 9.9: Personalization Strategy
+
+**Data Sources for Personalization:**
+1. **User Profile** — Goal, experience level (from onboarding)
+2. **Stats** — Workout frequency, favorite exercises, success rate (from `lib/stats.ts`)
+3. **PRs & Metrics** — Recent maxes, average weights per exercise (from workout logs)
+4. **Performance** — Adherence, consistency, recovery (from logs + goals)
+5. **Preferences** — Equipment access, location, time (from questionnaire)
+6. **Constraints** — Injuries, limitations (from questionnaire)
+
+**Gemini Integration:**
+- Prompt includes above data as context.
+- Gemini considers user's weak points (exercises they avoid or perform poorly).
+- Emphasizes user's favorite exercises while addressing weak areas.
+- Scales volume/intensity based on stated experience level.
+
+#### 9.10: Security & Privacy
+
+- **API key server-side only** — `GEMINI_API_KEY` in API route, never exposed.
+- **User data** — Prompt includes user's goals and stats, but is not stored with Gemini; only program result is saved to Firestore.
+- **Access control** — Firestore rules ensure users can only create/view/edit their own programs.
+- **Rate limiting** — Consider per-user limit (e.g., 1 new program per day) to prevent abuse.
+
+#### 9.11: Error Handling
+
+- **Invalid questionnaire** — Validate on client (all required fields) + server (type checks).
+- **Gemini quota/rate limit** — Return 429, encourage retry later.
+- **Malformed JSON from Gemini** — Parse error handling, show "Could not generate program" message.
+- **Network error** — Catch fetch failure, show error toast.
+- **Firestore write error** — Notify user, offer retry.
+
+#### 9.12: Future Enhancements (Out of Scope for MVP)
+
+- [ ] Program feedback — "Too hard?", "Too easy?" buttons to refine future programs
+- [ ] Adaptive adjustments — Modify program mid-cycle based on logged performance
+- [ ] Swap exercises — UI to substitute preferred exercises (in home → gym transition)
+- [ ] Multi-program comparison — Preview before committing
+- [ ] Export program — Print or PDF download
+- [ ] Share programs — Share with friends (different user's UID)
+- [ ] Coach review — Optional human trainer review/approval before launch
+- [ ] Milestone tracking — Track adherence and outcome metrics per program
+- [ ] Program templates — Start from pre-built templates instead of AI only
+
+#### 9.13: Testing Checklist
+
+- [ ] API Route returns valid WorkoutProgram JSON for all experience levels
+- [ ] Questionnaire validates all required fields (client + server)
+- [ ] Firestore writes and reads programs correctly
+- [ ] Multiple programs per user don't conflict
+- [ ] Gemini prompt handles missing user data (fallback to generic program)
+- [ ] Program display renders weeks/days/exercises correctly
+- [ ] "Log Against Program" links workout entries to program sessions
+- [ ] Users can archive/delete programs
+- [ ] Program list shows newest first, archived separately
+- [ ] Works on mobile (responsive program viewer)
+- [ ] Works on desktop (week sidebar navigation)
+- [ ] Offline: programs load from cache, queue new program generation when online
+- [ ] Error states handled gracefully (API timeouts, invalid questionnaire, etc.)
+
+---
+
 ## 5. Current Status Summary
 
 **✅ COMPLETE & PRODUCTION-READY:**
@@ -1237,6 +1884,9 @@ Centralized logic that checks conditions and creates notifications. Called after
 - Privacy Policy & Terms of Service pages
 - Data export (CSV/JSON) with unit-aware headers
 - In-memory caching with TTL + prefix invalidation
+- AI food recognition from meal photos (`/api/food-recognize` + health endpoint)
+- Personalized AI workout program generation (`/api/workout-program`) with questionnaire flow
+- Unified workout-program logging integration in `/workouts` (in-page "Follow a Program" panel)
 - All security rules configured & deployed
 
 **✅ DEPLOYED:**
@@ -1244,15 +1894,18 @@ Centralized logic that checks conditions and creates notifications. Called after
 - GCP OAuth consent screen configured (logo, privacy URL, terms URL)
 
 **📋 NEXT PRIORITIES:**
-1. Mobile device testing (iOS/Android)
-2. AI Coach WebSocket testing
-3. Performance optimization (React.memo, pagination, lazy loading)
-4. Analytics setup (Google Analytics, error tracking)
-5. Testing & CI/CD (Jest, Playwright, GitHub Actions)
+1. Program detail page data binding (`/programs/[programId]`) and richer session-level interactions
+2. Program adherence tracking & analytics dashboards
+3. End-to-end integration tests for AI food scan and AI program generation flows
+4. Mobile device testing (iOS/Android)
+5. AI Coach WebSocket testing
+6. Performance optimization (React.memo, pagination, lazy loading)
+7. Analytics setup (Google Analytics, error tracking)
+8. Testing & CI/CD (Jest, Playwright, GitHub Actions)
 
 **📊 CODE HEALTH:**
 - 0 TypeScript errors ✅
-- All pages compile successfully (16 routes) ✅
+- All pages compile successfully (program routes + AI API routes included) ✅
 - Security rules updated for all collections ✅
 - Firebase backend fully implemented ✅
 - Responsive design complete ✅
@@ -1264,6 +1917,9 @@ app/
   ├── (app)/
   │   ├── home/page.tsx              # Dashboard (moved from /)
   │   ├── workouts/page.tsx          # Workout logging
+  │   ├── programs/page.tsx          # Program hub
+  │   ├── programs/create/page.tsx   # AI program questionnaire/generation
+  │   ├── programs/[programId]/page.tsx # Program detail view
   │   ├── nutrition/page.tsx         # Meal logging
   │   ├── coach/page.tsx             # AI Coach
   │   ├── profile/page.tsx           # Profile + weight tracker
@@ -1273,6 +1929,10 @@ app/
   │   ├── templates/page.tsx         # Meal templates
   │   ├── settings/page.tsx          # Data export
   │   └── layout.tsx                 # App layout (nav, offline indicator)
+  ├── api/
+  │   ├── food-recognize/route.ts    # Gemini AI food recognition endpoint
+  │   ├── food-recognize/health/route.ts # Gemini health/status check
+  │   └── workout-program/route.ts   # Personalized AI workout program generation
   ├── (auth)/
   │   ├── login/page.tsx             # Login (Google + email/password)
   │   ├── register/page.tsx          # Register (Google + password strength)
@@ -1294,6 +1954,12 @@ components/
   │   ├── NotificationPanel.tsx      # Notification dropdown
   │   └── NotificationItem.tsx       # Single notification row
   ├── features/
+  │   ├── FoodScanner.tsx             # AI meal photo scanner
+  │   ├── ProgramQuestionnaire.tsx    # Program questionnaire (themed form)
+  │   ├── ProgramDisplay.tsx          # Program week/day/session display
+  │   ├── ProgramWeekView.tsx
+  │   ├── ProgramDayView.tsx
+  │   └── ProgramSessionCard.tsx
   │   ├── WorkoutList.tsx / WorkoutCard.tsx / WorkoutForm.tsx
   │   ├── MealList.tsx / MealCard.tsx / MealForm.tsx
   │   ├── GoalCard.tsx / GoalForm.tsx
@@ -1315,6 +1981,7 @@ lib/
   ├── firebase.ts
   ├── auth.ts                        # Email/password + Google Sign-In
   ├── workouts.ts
+  ├── workoutPrograms.ts              # Workout program CRUD + adherence helpers
   ├── meals.ts
   ├── goals.ts
   ├── weightLogs.ts
@@ -1326,6 +1993,9 @@ lib/
   ├── cache.ts                       # In-memory cache with TTL
   ├── mealTemplates.ts
   ├── types/firestore.ts             # All types (incl. unitSystem, Notification)
+  ├── services/
+  │   ├── gemini.ts                  # Gemini API client wrapper
+  │   └── programGeneration.ts       # Program prompt + generation + validation
   ├── utils/
   │   ├── units.ts                   # kg/lbs, cm/ft-in conversion utilities
   │   ├── export.ts                  # Unit-aware CSV/JSON export

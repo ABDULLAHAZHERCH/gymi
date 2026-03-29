@@ -51,6 +51,24 @@ export async function getTodayCalories(uid: string): Promise<number> {
 }
 
 /**
+ * Get number of workouts logged today
+ */
+export async function getTodayWorkoutCount(uid: string): Promise<number> {
+  try {
+    const start = new Date();
+    start.setHours(0, 0, 0, 0);
+
+    const end = new Date(start);
+    end.setHours(23, 59, 59, 999);
+
+    const workouts = await getWorkoutsByDateRange(uid, start, end);
+    return workouts.length;
+  } catch (error) {
+    throw new Error(getErrorMessage(error, 'Failed to get today workout count'));
+  }
+}
+
+/**
  * Get today's macro breakdown
  */
 export async function getTodayMacros(uid: string) {
@@ -233,6 +251,7 @@ export async function getDashboardStats(uid: string, unitSystem: UnitSystem = 'm
     try {
       const [
         weeklyCount,
+        todayWorkoutCount,
         todayCalories,
         todayMacros,
         favoriteExercises,
@@ -241,6 +260,7 @@ export async function getDashboardStats(uid: string, unitSystem: UnitSystem = 'm
         monthlyStats,
       ] = await Promise.all([
         getWeeklyWorkoutCount(uid),
+        getTodayWorkoutCount(uid),
         getTodayCalories(uid),
         getTodayMacros(uid),
         getFavoriteExercises(uid, 3),
@@ -251,6 +271,7 @@ export async function getDashboardStats(uid: string, unitSystem: UnitSystem = 'm
 
       return {
         weeklyWorkouts: weeklyCount,
+        todayWorkoutCount,
         todayCalories,
         todayMacros,
         favoriteExercises,

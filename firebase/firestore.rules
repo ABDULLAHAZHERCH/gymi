@@ -44,6 +44,11 @@ service cloud.firestore {
       match /notifications/{notificationId} {
         allow read, write: if isAuth() && isOwner(uid);
       }
+
+      // Subcollections: workout programs (AI-generated)
+      match /workoutPrograms/{programId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
     }
 
     // Public data (if needed in future)

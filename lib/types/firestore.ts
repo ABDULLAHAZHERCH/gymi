@@ -36,6 +36,12 @@ export interface Workout {
   notes?: string;
   date: Date;
 
+  // Optional Program Linkage
+  programId?: string;
+  programSessionId?: string;
+  programName?: string;
+  programSessionName?: string;
+
   // Metadata
   id: string;
   createdAt: Date;
@@ -157,4 +163,100 @@ export interface Notification {
   linkTo?: string; // route to navigate on click
   createdAt: Date;
   readAt?: Date;
+}
+
+/** Workout Program - AI-generated personalized program */
+/** Stored at /users/{uid}/workoutPrograms/{programId} */
+
+/** Exercise within a program session */
+export interface ProgramExercise {
+  exerciseId: string; // Link to lib/data/exercises.ts
+  name: string;
+  muscleGroups: string[];
+  sets: number;
+  reps: string | number; // "8-12" or 10
+  weight?: string; // "RPE 7-8", "65% 1RM", "bodyweight"
+  duration?: number; // For cardio/core (seconds or minutes)
+  intensity?: 'light' | 'moderate' | 'high' | string; // e.g., "explosive", "controlled"
+  restSeconds?: number;
+  notes?: string; // Form cues, alternatives
+  progressionNotes?: string; // How this progresses over weeks
+}
+
+/** Single workout session within a day */
+export interface WorkoutSession {
+  sessionId: string; // Unique within program
+  sequenceNumber: number; // Order within day
+  name: string; // e.g., "Main Strength Block"
+  exercises: ProgramExercise[];
+  estimatedDuration: number; // minutes
+  intensity: 'light' | 'moderate' | 'high';
+  notes?: string; // Rest periods, form tips, etc.
+  // Link to user's logged workout (if any)
+  loggedWorkoutId?: string; // Reference to /users/{uid}/workouts/{id}
+}
+
+/** Single day within a week */
+export interface WorkoutDay {
+  dayNumber: number; // 1-7 (within week)
+  dayName: string; // "Monday", "Chest Day", etc.
+  sessions: WorkoutSession[];
+}
+
+/** Single week within a program */
+export interface WorkoutWeek {
+  weekNumber: number; // 1, 2, 3, ...
+  focusAreas: string[]; // e.g., ["Chest", "Back", "Triceps"]
+  days: WorkoutDay[];
+  notes?: string; // e.g., "Deload week, reduce volume by 20%"
+}
+
+/** Program metadata capturing generation context */
+export interface ProgramMetadata {
+  goal: 'muscle_gain' | 'fat_loss' | 'strength' | 'endurance' | 'general_fitness';
+  experienceLevel: 'beginner' | 'intermediate' | 'advanced';
+  equipmentAccess: 'full_gym' | 'home_equipment' | 'minimal' | 'bodyweight_only';
+  location: 'gym' | 'home' | 'both';
+  daysPerWeek: number; // 3-7
+  sessionLengthMin: number; // 30-120
+  injuries?: string; // "lower back", "knee", etc.
+  notes?: string;
+}
+
+/** Adherence tracking for a program */
+export interface ProgramAdherence {
+  totalSessionsPlanned: number;
+  totalSessionsLogged: number;
+  adherencePercent: number; // 0-100
+  lastLoggedDate?: Date;
+}
+
+/** Main Workout Program document */
+export interface WorkoutProgram {
+  // Identifiers & Metadata
+  id: string; // Auto-generated doc ID
+  userId: string; // Reference to user
+  programName: string; // e.g., "6-Week Strength Build"
+  description: string; // AI-generated summary
+  
+  // Generation Context
+  metadata: ProgramMetadata;
+  
+  // Program Structure
+  plan: {
+    // New structure: direct day/session plan (no week grouping)
+    days?: WorkoutDay[];
+    // Backward compatibility for existing saved programs
+    weeks?: WorkoutWeek[];
+  };
+  
+  // Status & Engagement
+  status: 'active' | 'completed' | 'archived';
+  adherenceStats?: ProgramAdherence;
+  
+  // Timestamps
+  createdAt: Date; // Generation date
+  updatedAt: Date; // Last edit
+  startedAt?: Date; // When user started following it
+  completedAt?: Date; // When user completed it
 }

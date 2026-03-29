@@ -4,6 +4,7 @@ import { useState, FormEvent } from 'react';
 import { X } from 'lucide-react';
 import { Meal } from '@/lib/types/firestore';
 import { getErrorMessage } from '@/lib/utils/errorMessages';
+import FoodScanner from './FoodScanner';
 
 // Helper to format Date to datetime-local string in user's local timezone
 const formatDateToLocalString = (date: Date): string => {
@@ -108,6 +109,24 @@ export default function MealForm({
         <p className="rounded-lg bg-red-100 p-2 text-xs text-red-700 dark:bg-red-900 dark:text-red-100">
           {error}
         </p>
+      )}
+
+      {/* AI Food Scanner — only show when adding a new meal (not editing) */}
+      {!initialData && (
+        <FoodScanner
+          disabled={isLoading}
+          onResult={(result) => {
+            setFormData((prev) => ({
+              ...prev,
+              mealName: result.food_name,
+              items: result.items.join(', '),
+              calories: result.calories.toString(),
+              protein: result.protein.toString(),
+              carbs: result.carbs.toString(),
+              fat: result.fat.toString(),
+            }));
+          }}
+        />
       )}
 
       <div className="space-y-3">

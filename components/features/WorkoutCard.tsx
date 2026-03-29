@@ -42,6 +42,12 @@ export default function WorkoutCard({ workout, onEdit, onDelete }: WorkoutCardPr
                 Duration: {workout.duration} min
               </p>
             )}
+            {workout.programName && (
+              <p className="inline-flex w-fit rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">
+                {workout.programName}
+                {workout.programSessionName ? ` • ${workout.programSessionName}` : ''}
+              </p>
+            )}
             <p className="text-xs text-[color:var(--muted-foreground)]">{formatDate(workout.date)}</p>
           </div>
         </div>

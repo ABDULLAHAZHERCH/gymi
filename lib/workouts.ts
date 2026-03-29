@@ -52,6 +52,10 @@ const convertTimestamps = (data: any): Omit<Workout, 'id'> => {
     duration: data.duration ? Number(data.duration) : undefined,
     notes: data.notes?.trim() || undefined,
     date: parseDate(data.date),
+    programId: data.programId || undefined,
+    programSessionId: data.programSessionId || undefined,
+    programName: data.programName || undefined,
+    programSessionName: data.programSessionName || undefined,
     createdAt: parseDate(data.createdAt),
     updatedAt: parseDate(data.updatedAt),
   };
@@ -78,6 +82,10 @@ export async function addWorkout(
       duration: workoutData.duration ? Number(workoutData.duration) : null,
       notes: workoutData.notes?.trim() || null,
       date: Timestamp.fromDate(dateValue),
+      programId: workoutData.programId || null,
+      programSessionId: workoutData.programSessionId || null,
+      programName: workoutData.programName || null,
+      programSessionName: workoutData.programSessionName || null,
       createdAt: Timestamp.fromDate(new Date()),
       updatedAt: Timestamp.fromDate(new Date()),
     });
@@ -155,6 +163,14 @@ export async function updateWorkout(
     if (updates.weight !== undefined) updateData.weight = Number(updates.weight) || 0;
     if (updates.duration !== undefined) updateData.duration = updates.duration ? Number(updates.duration) : null;
     if (updates.notes !== undefined) updateData.notes = updates.notes?.trim() || null;
+    if (updates.programId !== undefined) updateData.programId = updates.programId || null;
+    if (updates.programSessionId !== undefined) {
+      updateData.programSessionId = updates.programSessionId || null;
+    }
+    if (updates.programName !== undefined) updateData.programName = updates.programName || null;
+    if (updates.programSessionName !== undefined) {
+      updateData.programSessionName = updates.programSessionName || null;
+    }
     
     // Convert date if provided
     if (updates.date) {

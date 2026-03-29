@@ -27,7 +27,7 @@
 
 ## Overview
 
-GYMI is a full-stack fitness web application that lets users track workouts, log nutrition, set goals, monitor progress, and receive AI-powered form correction during exercises. It works as a Progressive Web App (PWA) — installable on mobile devices with offline support and background sync.
+GYMI is a full-stack fitness web application that lets users track workouts, log nutrition, set goals, monitor progress, generate AI workout programs, and receive AI-powered form correction during exercises. It works as a Progressive Web App (PWA) — installable on mobile devices with offline support and background sync.
 
 ### Key Highlights
 
@@ -40,6 +40,8 @@ GYMI is a full-stack fitness web application that lets users track workouts, log
 | Hosting | Vercel (auto-deploy from GitHub) |
 | PWA | Service Worker, IndexedDB offline store, install prompt |
 | AI Coach | MediaPipe pose detection via WebSocket |
+| AI Nutrition | Google Gemini Flash food image recognition (2.5 default with fallbacks) |
+| AI Programs | Gemini-generated multi-week workout programs with in-workout logging integration |
 
 ---
 
@@ -80,6 +82,7 @@ GYMI is a full-stack fitness web application that lets users track workouts, log
 
 | Package | Purpose |
 |---|---|
+| `@google/generative-ai` | Google Gemini 1.5 Flash API client (food image recognition) |
 | `@mediapipe/tasks-vision` | Real-time pose detection for form correction |
 
 ---
@@ -98,8 +101,8 @@ GYMI is a full-stack fitness web application that lets users track workouts, log
 │        ▼                                    ▼       │
 │  ┌─────────────────────────────────────────────────┐│
 │  │           Service Layer (lib/*.ts)               ││
-│  │  auth · workouts · meals · goals · weightLogs   ││
-│  │  stats · achievements · reports · mealTemplates ││
+│  │  auth · workouts · workoutPrograms · meals · goals · weightLogs ││
+│  │  stats · achievements · reports · mealTemplates · notifications ││
 │  └─────────────────────┬───────────────────────────┘│
 └────────────────────────┼────────────────────────────┘
                          │  Firebase SDK
@@ -113,6 +116,25 @@ GYMI is a full-stack fitness web application that lets users track workouts, log
               │  │   Firestore    │  │
               │  └────────────────┘  │
               └──────────────────────┘
+
+┌─────────────────── AI Food Recognition ──────────────────────┐
+│                                                               │
+│  FoodScanner ──► /api/food-recognize ──► Gemini Flash models │
+│  (camera/file)   (Next.js API Route)     (Google AI)         │
+│       ▲              │   rate limiter                         │
+│       └──────────────┘   base64 image → JSON nutrition data  │
+│   pre-fills MealForm                                         │
+└───────────────────────────────────────────────────────────────┘
+
+┌──────────────── AI Workout Programs & Logging ────────────────┐
+│                                                               │
+│ Questionnaire ─► /api/workout-program ─► Gemini JSON Program │
+│      │                (Next.js API route)                     │
+│      └──────────────────► Firestore /workoutPrograms          │
+│                                                               │
+│ Workouts page: "Follow a Program (Optional)" collapsible      │
+│ program+session pick ─► prefilled WorkoutForm ─► linked log   │
+└───────────────────────────────────────────────────────────────┘
 ```
 
 ### Data Flow
@@ -127,7 +149,7 @@ GYMI is a full-stack fitness web application that lets users track workouts, log
 
 - **Server Components** by default (no `'use client'` directive)
 - **Client Components** for interactive pages (forms, auth state, animations)
-- **Static Generation** at build time for all pages (output: `static`)
+- **Mostly static output** with selected dynamic routes (e.g., `/programs/[programId]`) and API handlers
 
 ---
 
@@ -140,6 +162,8 @@ GYMI is a full-stack fitness web application that lets users track workouts, log
 - View workout history sorted by date (newest first)
 - Search by exercise name, filter by date range
 - Exercise library with 20+ predefined exercises (muscle groups, difficulty, instructions)
+- **Program-linked logging** — choose a program session from the Workouts page and prefill the logging form
+- **Linked workout badges** — logged entries can display source program/session context
 
 ### 2. Nutrition Diary
 - Log meals with food items, calories, and macros (protein, carbs, fat)
@@ -211,6 +235,29 @@ GYMI is a full-stack fitness web application that lets users track workouts, log
 - **Terms of Service** page (`/terms`) — 12 sections covering acceptable use, health disclaimer, liability
 - Links in landing page footer and auth layout footer
 
+### 13. AI Food Recognition
+- **Scan Meal with AI** — upload or capture a photo of any meal using the device camera or file picker
+- **Google Gemini 1.5 Flash** — multimodal vision model analyzes the image server-side
+- **Auto-fill nutrition data** — food name, individual items, calories, protein, carbs, and fat are pre-filled into the meal form
+- **Confidence indicator** — results tagged as high/medium/low confidence; low-confidence scans show a warning
+- **Server-side API route** (`POST /api/food-recognize`) — keeps Gemini API key secret (no client exposure)
+- **Base64 encoding** — images sent inline (max 4MB), no cloud storage needed
+- **Rate limiting** — server-side per-IP rate limiter (12 req/min) prevents Gemini quota exhaustion; client-side exponential backoff with automatic retry on 429
+- **Privacy-first** — images are never stored; used for analysis only and discarded
+
+### 14. AI Workout Program Generation + Unified Logging
+- **Program generator** (`/programs/create`) — questionnaire-driven program creation flow
+- **Gemini program API** (`POST /api/workout-program`) — validates questionnaire input, generates structured multi-week JSON
+- **Firestore persistence** — generated plans are stored per-user at `/users/{uid}/workoutPrograms/{programId}`
+- **Unified workout flow** — no extra nav item; users log program sessions directly inside `/workouts`
+- **Workouts integration panel** — `Follow a Program (Optional)` collapsible supports:
+  - Program selection
+  - Session selection (week/day/session labels)
+  - One-click prefill into `WorkoutForm`
+  - Clear linked context action
+- **Linked workout metadata** — workout entries can include `programId`, `programSessionId`, `programName`, `programSessionName`
+- **Themed program creation UI** — create-program page and questionnaire now follow app design tokens and layout conventions
+
 ---
 
 ## Project Structure
@@ -227,10 +274,19 @@ gymi/
 │   │   ├── login/page.tsx        # Login page (Google + email/password, password visibility toggle)
 │   │   ├── register/page.tsx     # Register page (Google + password strength meter)
 │   │   └── onboarding/page.tsx   # Post-registration onboarding wizard (unit toggle)
+│   ├── api/
+│   │   └── food-recognize/       # AI food recognition endpoint
+│   │       ├── route.ts          # POST handler (Gemini 1.5 Flash, rate limited)
+│   │       └── health/route.ts   # GET health/status endpoint for Gemini readiness
+│   │   └── workout-program/
+│   │       └── route.ts          # POST handler (Gemini-generated workout program)
 │   └── (app)/                    # Authenticated route group
 │       ├── layout.tsx            # Protected layout (auth guard, toast, error boundary)
 │       ├── home/page.tsx         # Dashboard
 │       ├── workouts/page.tsx     # Workout logging
+│       ├── programs/page.tsx     # Program hub (create + flow guidance)
+│       ├── programs/create/page.tsx   # Themed questionnaire-driven generation flow
+│       ├── programs/[programId]/page.tsx # Program detail page
 │       ├── nutrition/page.tsx    # Meal logging
 │       ├── coach/page.tsx        # AI Coach with camera
 │       ├── progress/page.tsx     # Goals, weight chart, achievements, insights
@@ -260,6 +316,12 @@ gymi/
 │   │   ├── MealTemplateCard.tsx  # Meal template display
 │   │   ├── MealTemplateForm.tsx  # Template editor
 │   │   ├── FilterPanel.tsx       # Search/filter controls
+│   │   ├── FoodScanner.tsx       # AI food scanner (camera/file picker, retry logic)
+│   │   ├── ProgramQuestionnaire.tsx # Program generation questionnaire form
+│   │   ├── ProgramDisplay.tsx    # Program viewer shell (week navigation + stats)
+│   │   ├── ProgramWeekView.tsx   # Week breakdown renderer
+│   │   ├── ProgramDayView.tsx    # Day-level expandable view
+│   │   ├── ProgramSessionCard.tsx # Session-level details
 │   │   ├── CameraView.tsx        # Camera feed for AI Coach
 │   │   ├── PoseCanvas.tsx        # Pose skeleton overlay
 │   │   └── FormFeedbackCard.tsx  # AI form correction feedback
@@ -299,6 +361,7 @@ gymi/
 │   ├── firebase.ts               # Firebase app initialization
 │   ├── auth.ts                   # Auth functions (register, login, logout, Google sign-in, profile CRUD)
 │   ├── workouts.ts               # Workout CRUD operations
+│   ├── workoutPrograms.ts        # Workout program CRUD + adherence helpers
 │   ├── meals.ts                  # Meal CRUD + daily calorie/macro totals
 │   ├── goals.ts                  # Goal CRUD + progress calculation
 │   ├── weightLogs.ts             # Weight log CRUD + change tracking
@@ -316,6 +379,8 @@ gymi/
 │   │   ├── useKeyboardShortcut.ts# Keyboard shortcut hook
 │   │   └── usePoseWebSocket.ts   # WebSocket hook for AI pose detection
 │   ├── services/
+│   │   ├── gemini.ts             # Google Gemini 1.5 Flash client (food image analysis)
+│   │   ├── programGeneration.ts  # Prompt + generation + validation for workout programs
 │   │   └── poseDetection.ts      # MediaPipe pose detection service
 │   ├── offline/
 │   │   ├── offlineStore.ts       # IndexedDB CRUD for offline data
@@ -367,6 +432,7 @@ All user data is stored in Firestore under `/users/{uid}/` with per-user isolati
 ```
 /users/{uid}                      → UserProfile
 /users/{uid}/workouts/{id}        → Workout
+/users/{uid}/workoutPrograms/{id} → WorkoutProgram
 /users/{uid}/meals/{id}           → Meal
 /users/{uid}/goals/{id}           → Goal
 /users/{uid}/weightLogs/{id}      → WeightLog
@@ -399,8 +465,31 @@ All user data is stored in Firestore under `/users/{uid}/` with per-user isolati
 | `duration` | number? | Duration in minutes (optional) |
 | `notes` | string? | Free-text notes (optional) |
 | `date` | Date | Workout date |
+| `programId` | string? | Linked workout program ID (optional) |
+| `programSessionId` | string? | Linked program session ID (optional) |
+| `programName` | string? | Program display name at log time (optional) |
+| `programSessionName` | string? | Session display name at log time (optional) |
 | `createdAt` | Date | Entry creation timestamp |
 | `updatedAt` | Date | Last edit timestamp |
+
+#### WorkoutProgram
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Program document ID |
+| `userId` | string | Owner user ID |
+| `programName` | string | Program title |
+| `description` | string | Program summary |
+| `metadata.goal` | enum | muscle_gain / fat_loss / strength / endurance / general_fitness |
+| `metadata.experienceLevel` | enum | beginner / intermediate / advanced |
+| `metadata.equipmentAccess` | enum | full_gym / home_equipment / minimal / bodyweight_only |
+| `metadata.location` | enum | gym / home / both |
+| `metadata.daysPerWeek` | number | Planned weekly frequency |
+| `metadata.sessionLengthMin` | number | Session length target in minutes |
+| `plan.weeks[]` | array | Multi-week structure with days, sessions, and exercises |
+| `status` | enum | active / completed / archived |
+| `adherenceStats` | object? | total planned/logged sessions and adherence percent |
+| `createdAt` | Date | Program generation timestamp |
+| `updatedAt` | Date | Last update timestamp |
 
 #### Meal
 | Field | Type | Description |
@@ -532,11 +621,17 @@ No user can read or modify another user's data.
 | `/terms` | Public | Terms of Service page |
 | `/home` | Protected | Dashboard with stats, activity feed, quick actions |
 | `/workouts` | Protected | Workout log — CRUD, search, filters, exercise library |
+| `/programs` | Protected | Program hub with create flow and guided linkage to workouts |
+| `/programs/create` | Protected | Program questionnaire and AI generation flow |
+| `/programs/[programId]` | Protected | Program detail page |
 | `/nutrition` | Protected | Meal log — CRUD, search, filters, templates |
 | `/coach` | Protected | AI Coach — camera feed, pose detection, form feedback |
 | `/progress` | Protected | Goals, weight chart, achievements, streak, insights |
 | `/account` | Protected | Account settings (profile edit, unit preference, data export, danger zone) |
 | `/achievements` | Protected | Full achievements gallery with filters |
+| `/api/workout-program` | API (POST) | Generate personalized workout program from questionnaire input |
+| `/api/food-recognize` | API (POST) | AI food image analysis (Gemini Flash, rate/ quota-aware handling) |
+| `/api/food-recognize/health` | API (GET) | Checks key/model readiness and runtime quota/auth status |
 
 ### Route Groups
 
@@ -545,8 +640,9 @@ No user can read or modify another user's data.
 
 ### Navigation
 
-- **Mobile (< 768px):** Sticky bottom nav bar with 5 items (Home, Workouts, Coach, Nutrition, Profile)
+- **Mobile (< 768px):** Sticky bottom nav bar with 5 items (Home, Workout, Coach, Nutrition, Progress)
 - **Desktop (≥ 768px):** Fixed left sidebar with the same links plus account access
+- **Program discovery pattern:** Programs are intentionally not a dedicated navbar item; users can create/open programs from `/programs` and log program sessions directly from the Workouts page via the in-page "Follow a Program (Optional)" panel
 - **User Menu:** Top-right avatar dropdown → Account Settings, Theme toggle, Log out
 - **Notification Bell:** Bell icon with unread badge, opens dropdown panel with notification list
 
@@ -578,6 +674,24 @@ All service functions are `async` and interact with Firestore. They accept a `ui
 | `deleteWorkout(uid, workoutId)` | Delete a workout |
 | `getWorkoutsByDateRange(uid, start, end)` | Query by date range |
 | `getRecentWorkouts(uid, count)` | Fetch last N workouts |
+
+Notes:
+- Workout records now support optional program linkage fields (`programId`, `programSessionId`, `programName`, `programSessionName`) and persist these values through create/update/fetch operations.
+
+### `lib/workoutPrograms.ts`
+| Function | Description |
+|---|---|
+| `createProgram(uid, data)` | Save a generated workout program |
+| `getProgram(uid, programId)` | Fetch one program |
+| `getPrograms(uid, limit?)` | Fetch all programs (newest first) |
+| `getActivePrograms(uid)` | Fetch only active programs |
+| `updateProgram(uid, programId, updates)` | Update metadata/status/plan/adherence |
+| `archiveProgram(uid, programId)` | Mark program as archived |
+| `completeProgram(uid, programId)` | Mark program as completed |
+| `activateProgram(uid, programId)` | Mark program as active |
+| `deleteProgram(uid, programId)` | Delete program |
+| `updateAdherence(uid, programId, updates)` | Update adherence stats after logs |
+| `calculateTotalSessions(program)` | Compute total planned sessions |
 
 ### `lib/meals.ts`
 | Function | Description |
@@ -672,6 +786,23 @@ All service functions are `async` and interact with Firestore. They accept a `ui
 | `cacheSet(key, value, ttlMs?)` | Set cached value with optional TTL (default 5 min) |
 | `cacheInvalidate(keyOrPrefix)` | Invalidate exact key or prefix (if ends with `:`) |
 
+### `lib/services/gemini.ts`
+| Function | Description |
+|---|---|
+| `analyzeFoodImage(base64Image, mimeType?)` | Send base64 image to Gemini Flash (2.5 default + fallback models), returns `FoodRecognitionResult` (food_name, calories, protein, carbs, fat, items[], confidence) |
+| `generateTextContent(prompt, options?)` | Generic Gemini text generation helper used for structured program generation with model fallback |
+
+### `lib/services/programGeneration.ts`
+| Function | Description |
+|---|---|
+| `generateWorkoutProgram(metadata, userContext?)` | Build prompt + call Gemini + return normalized program payload |
+| `validateProgram(program)` | Validate generated structure before persistence |
+
+### `app/api/workout-program/route.ts`
+| Method | Description |
+|---|---|
+| `POST` | Validates questionnaire payload, generates a personalized workout program via Gemini, and returns normalized JSON for client-side persistence |
+
 ### `lib/mealTemplates.ts`
 | Function | Description |
 |---|---|
@@ -711,6 +842,7 @@ All service functions are `async` and interact with Firestore. They accept a `ui
 - **Cards:** White background with subtle `border-zinc-200` / dark `border-zinc-800`
 - **Buttons:** `Button.tsx` component with loading spinner, variant support
 - **Modals:** `Modal.tsx` with backdrop, escape-to-close, click-outside-to-close
+- **Program creation flow:** Themed inline questionnaire card on `/programs/create` using app tokens (not a custom off-theme modal shell)
 - **Toast Notifications:** 4 variants (success / error / info / warning), auto-dismiss, stackable
 - **Skeletons:** Pulsing placeholder shapes for workout, meal, stat, and activity loading states
 - **Error Boundary:** Catch-all with "Try again" and "Reload page" recovery actions
@@ -746,7 +878,22 @@ NEXT_PUBLIC_FIREBASE_APP_ID=...
 NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID=...
 ```
 
-All variables are prefixed with `NEXT_PUBLIC_` — they are embedded in the client bundle (this is safe for Firebase web SDKs; security is enforced by Firestore rules, not API key secrecy).
+All Firebase variables are prefixed with `NEXT_PUBLIC_` — they are embedded in the client bundle (this is safe for Firebase web SDKs; security is enforced by Firestore rules, not API key secrecy).
+
+Additionally, the following **server-side only** variable is required for AI food recognition (no `NEXT_PUBLIC_` prefix — never exposed to the client):
+
+```env
+GEMINI_API_KEY=your_gemini_api_key_here
+GEMINI_MODEL=gemini-2.5-flash # optional override, defaults to gemini-2.5-flash
+```
+
+Get a free API key from [Google AI Studio](https://aistudio.google.com/app/apikey). Free tier: 15 RPM, 1500 requests/day.
+
+Quick health check during local development:
+
+```bash
+curl http://localhost:3000/api/food-recognize/health
+```
 
 ---
 
@@ -770,7 +917,7 @@ The app is deployed on Vercel with automatic deploys from the `main` branch on G
 - **Production URL:** [gymii.vercel.app](https://gymii.vercel.app)
 - **Framework:** Auto-detected as Next.js
 - **Build Command:** `next build`
-- **Output:** Static (all 16 pages pre-rendered)
+- **Output:** Static pages + dynamic API routes (`/api/food-recognize`, `/api/food-recognize/health`, `/api/workout-program`)
 - **Environment Variables:** Configured in Vercel Dashboard → Settings → Environment Variables
 
 ### Build Output
@@ -780,6 +927,9 @@ Route (app)             Size
 /                       Landing page
 /home                   Dashboard
 /workouts               Workout logger
+/programs               Programs hub
+/programs/create        Program creation questionnaire
+/programs/[programId]   Program detail view
 /nutrition              Nutrition diary
 /coach                  AI Coach
 /progress               Progress tracking
@@ -790,7 +940,10 @@ Route (app)             Size
 /login                  Login (Google + email/password)
 /register               Register (Google + password strength)
 /onboarding             Onboarding wizard (unit toggle)
+/api/workout-program    Program generation API
+/api/food-recognize     Food recognition API
+/api/food-recognize/health Food recognition health check
 /icon.svg               Favicon
 ```
 
-All routes are statically generated at build time. Client-side data fetching happens after hydration via Firebase SDK.
+Most pages are statically generated at build time, while selected routes are dynamic (`/programs/[programId]`, API routes). Client-side data fetching still happens after hydration via Firebase SDK.

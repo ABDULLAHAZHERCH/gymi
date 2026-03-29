@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { UtensilsCrossed, Dumbbell, Home, TrendingUp, ChevronLeft, ChevronRight, Activity } from "lucide-react";
+import { UtensilsCrossed, Dumbbell, Home, TrendingUp, ChevronLeft, ChevronRight, Activity, FolderKanban } from "lucide-react";
 
 const NAV_ITEMS = [
   { label: "Home", href: "/home", icon: Home },
@@ -11,6 +11,7 @@ const NAV_ITEMS = [
   { label: "Coach", href: "/coach", icon: Dumbbell },
   { label: "Nutrition", href: "/nutrition", icon: UtensilsCrossed },
   { label: "Progress", href: "/progress", icon: TrendingUp },
+  { label: "Programs", href: "/programs", icon: FolderKanban },
 ];
 
 const SIDEBAR_STORAGE_KEY = "gymi-sidebar-collapsed";

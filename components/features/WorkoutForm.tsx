@@ -1,13 +1,14 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
-import { X } from 'lucide-react';
+import { useEffect, useState, FormEvent } from 'react';
+import { Link2, X } from 'lucide-react';
 import { Workout } from '@/lib/types/firestore';
 import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { validateField, ValidationErrors } from '@/lib/utils/validation';
 import { useFormShortcuts } from '@/lib/hooks/useKeyboardShortcut';
 import { useUnits } from '@/components/providers/UnitProvider';
 import { weightUnit, weightToKg, getWeightInUnit } from '@/lib/utils/units';
+import { EXERCISE_DATABASE } from '@/lib/data/exercises';
 
 // Helper to format Date to datetime-local string in user's local timezone
 const formatDateToLocalString = (date: Date): string => {
@@ -24,6 +25,19 @@ interface WorkoutFormProps {
   onCancel: () => void;
   initialData?: Workout;
   isLoading?: boolean;
+  programContext?: {
+    programId: string;
+    programSessionId: string;
+    programName: string;
+    programSessionName: string;
+  } | null;
+  prefillData?: Partial<Pick<Workout, 'exercise' | 'sets' | 'reps' | 'notes'>>;
+  suggestedExercises?: Array<{
+    name: string;
+    sets?: number;
+    reps?: number;
+  }>;
+  onClearProgramContext?: () => void;
 }
 
 export default function WorkoutForm({
@@ -31,6 +45,10 @@ export default function WorkoutForm({
   onCancel,
   initialData,
   isLoading = false,
+  programContext,
+  prefillData,
+  suggestedExercises,
+  onClearProgramContext,
 }: WorkoutFormProps) {
   const { unitSystem } = useUnits();
   const wu = weightUnit(unitSystem);
@@ -49,6 +67,30 @@ export default function WorkoutForm({
   const [error, setError] = useState('');
   const [fieldErrors, setFieldErrors] = useState<ValidationErrors>({});
   const [touched, setTouched] = useState<Record<string, boolean>>({});
+  const [selectedExerciseName, setSelectedExerciseName] = useState(
+    initialData?.exercise || prefillData?.exercise || ''
+  );
+
+  const exerciseOptions = EXERCISE_DATABASE
+    .map((exercise) => exercise.name)
+    .sort((a, b) => a.localeCompare(b));
+
+  useEffect(() => {
+    if (initialData || !prefillData) {
+      return;
+    }
+
+    setFormData((prev) => ({
+      ...prev,
+      exercise: prefillData.exercise ?? prev.exercise,
+      sets: prefillData.sets !== undefined ? String(prefillData.sets) : prev.sets,
+      reps: prefillData.reps !== undefined ? String(prefillData.reps) : prev.reps,
+      notes: prefillData.notes ?? prev.notes,
+    }));
+    if (prefillData.exercise) {
+      setSelectedExerciseName(prefillData.exercise);
+    }
+  }, [initialData, prefillData]);
 
   const validationRules = {
     exercise: { required: true, minLength: 2 },
@@ -74,7 +116,7 @@ export default function WorkoutForm({
   };
 
   const handleChange = (fieldName: string, value: string) => {
-    setFormData({ ...formData, [fieldName]: value });
+    setFormData((prev) => ({ ...prev, [fieldName]: value }));
     
     // Clear error on change if field was touched
     if (touched[fieldName] && fieldErrors[fieldName]) {
@@ -122,6 +164,10 @@ export default function WorkoutForm({
         duration: formData.duration ? parseInt(formData.duration) : undefined,
         notes: formData.notes?.trim() || undefined,
         date: dateObj,
+        programId: programContext?.programId,
+        programSessionId: programContext?.programSessionId,
+        programName: programContext?.programName,
+        programSessionName: programContext?.programSessionName,
       });
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to save workout'));
@@ -159,14 +205,100 @@ export default function WorkoutForm({
         </p>
       )}
 
+      {programContext && !initialData && (
+        <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 dark:border-zinc-800 dark:bg-zinc-900">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-2 text-xs">
+              <Link2 className="h-3.5 w-3.5 text-[color:var(--muted-foreground)]" />
+              <p className="truncate text-[color:var(--muted-foreground)]">
+                Linked to <span className="font-semibold text-[color:var(--foreground)]">{programContext.programName}</span>
+                {' '}({programContext.programSessionName})
+              </p>
+            </div>
+            {onClearProgramContext && (
+              <button
+                type="button"
+                onClick={onClearProgramContext}
+                className="text-xs font-medium text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]"
+              >
+                Clear
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {programContext && !initialData && suggestedExercises && suggestedExercises.length > 0 && (
+        <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] px-3 py-3 dark:border-zinc-800">
+          <p className="text-xs font-medium text-[color:var(--foreground)]">Session Exercises</p>
+          <p className="mt-1 text-[11px] text-[color:var(--muted-foreground)]">
+            Tap an exercise to auto-fill name, sets, and reps.
+          </p>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {suggestedExercises.map((exercise, index) => (
+              <button
+                key={`${exercise.name}-${index}`}
+                type="button"
+                onClick={() => {
+                  handleChange('exercise', exercise.name);
+                  setSelectedExerciseName(exercise.name);
+                  if (exercise.sets !== undefined) {
+                    handleChange('sets', String(exercise.sets));
+                  }
+                  if (exercise.reps !== undefined) {
+                    handleChange('reps', String(exercise.reps));
+                  }
+                  if (programContext) {
+                    setFormData((prev) => ({
+                      ...prev,
+                      notes: prev.notes || `From ${programContext.programName} • ${programContext.programSessionName}`,
+                    }));
+                  }
+                }}
+                className="rounded-full border border-zinc-200 px-3 py-1 text-xs font-medium text-[color:var(--foreground)] hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-900"
+              >
+                {exercise.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       <div className="space-y-3">
+        <label className="block text-xs font-medium">
+          Choose Existing Exercise (Optional)
+          <select
+            value={selectedExerciseName}
+            onChange={(e) => {
+              const value = e.target.value;
+              setSelectedExerciseName(value);
+              if (value) {
+                handleChange('exercise', value);
+              }
+            }}
+            disabled={isLoading}
+            className="mt-1 w-full rounded-lg border border-zinc-200 bg-[color:var(--background)] px-3 py-2 text-sm shadow-sm outline-none focus:border-black dark:border-zinc-800 dark:focus:border-white disabled:opacity-50"
+          >
+            <option value="">Type exercise manually</option>
+            {exerciseOptions.map((exerciseName) => (
+              <option key={exerciseName} value={exerciseName}>
+                {exerciseName}
+              </option>
+            ))}
+          </select>
+        </label>
+
         <label className="block text-xs font-medium">
           Exercise Name *
           <input
             type="text"
             placeholder="e.g., Bench Press"
             value={formData.exercise}
-            onChange={(e) => handleChange('exercise', e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              handleChange('exercise', value);
+              setSelectedExerciseName(value);
+            }}
             onBlur={() => handleBlur('exercise')}
             disabled={isLoading}
             className={`mt-1 w-full rounded-lg border ${
@@ -180,6 +312,9 @@ export default function WorkoutForm({
               {fieldErrors.exercise}
             </p>
           )}
+          <p className="mt-0.5 text-[11px] text-[color:var(--muted-foreground)]">
+            Select from the exercise library above or type any custom exercise name manually.
+          </p>
         </label>
 
         <div className="grid grid-cols-3 gap-2">

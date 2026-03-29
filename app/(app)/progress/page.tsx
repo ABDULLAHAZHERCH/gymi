@@ -7,21 +7,20 @@ import { useToast } from '@/lib/contexts/ToastContext';
 import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { getActiveGoals, addGoal, updateGoal, deleteGoal, completeGoal } from '@/lib/goals';
 import { getWeightLogs, addWeightLog } from '@/lib/weightLogs';
-import { getAchievements } from '@/lib/achievements';
+import { getAchievements, checkForNewAchievements, calculateStreaks } from '@/lib/achievements';
 import { getInsights, type Insight } from '@/lib/reports';
-import { calculateStreaks } from '@/lib/achievements';
 import { getWorkouts } from '@/lib/workouts';
 import { Goal, WeightLog, Achievement } from '@/lib/types/firestore';
 import { triggerGoalCompletedNotification } from '@/lib/notificationTriggers';
 import { useUnits } from '@/components/providers/UnitProvider';
-import { weightUnit, getWeightInUnit, weightToKg, displayWeight } from '@/lib/utils/units';
+import { weightUnit, weightToKg, displayWeight } from '@/lib/utils/units';
 import AppLayout from '@/components/layout/AppLayout';
 import GoalCard from '@/components/features/GoalCard';
 import GoalForm from '@/components/features/GoalForm';
 import StreakIndicator from '@/components/features/StreakIndicator';
 import Modal from '@/components/ui/Modal';
 import { WeightChart } from '@/components/features/WeightChart';
-import { Plus, Target, TrendingUp, Award, Lightbulb, ChevronRight } from 'lucide-react';
+import { Plus, Target, TrendingUp, Award, Lightbulb, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react';
 import { useCachedData } from '@/lib/hooks/useCachedData';
 
 export default function ProfilePage() {
@@ -46,6 +45,9 @@ export default function ProfilePage() {
   } = useCachedData<ProgressData>({
     key: `progress:${user?.uid}:${unitSystem}`,
     fetcher: useCallback(async () => {
+      // Ensure newly earned badges are unlocked before rendering.
+      await checkForNewAchievements(user!.uid).catch(() => [] as Achievement[]);
+
       const [goalsData, weightsData, achievementsData, insightsData, workoutsData] = await Promise.all([
         getActiveGoals(user!.uid),
         getWeightLogs(user!.uid, 30),
@@ -84,6 +86,7 @@ export default function ProfilePage() {
   const [editingGoal, setEditingGoal] = useState<Goal | null>(null);
   const [goalFormLoading, setGoalFormLoading] = useState(false);
   const [isWeightModalOpen, setIsWeightModalOpen] = useState(false);
+  const [recentLogsOpen, setRecentLogsOpen] = useState(false);
   const [newWeight, setNewWeight] = useState('');
   const [newNotes, setNewNotes] = useState('');
   const [weightSubmitting, setWeightSubmitting] = useState(false);
@@ -235,24 +238,51 @@ export default function ProfilePage() {
         </div>
 
         <div className="space-y-4">
-          {/* Streak & Achievements Preview */}
+          <div className="rounded-2xl border border-zinc-200 bg-[radial-gradient(circle_at_15%_15%,rgba(245,158,11,0.18),transparent_45%),radial-gradient(circle_at_85%_25%,rgba(59,130,246,0.16),transparent_45%),var(--background)] p-4 shadow-sm dark:border-zinc-800">
+            <p className="text-xs font-semibold uppercase tracking-[0.2em] text-[color:var(--muted-foreground)]">
+              Performance Snapshot
+            </p>
+            <h3 className="mt-2 text-lg font-semibold text-[color:var(--foreground)]">
+              Keep building momentum every day
+            </h3>
+
+            <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)]/80 p-3 dark:border-zinc-800">
+                <p className="text-[11px] uppercase tracking-wider text-[color:var(--muted-foreground)]">Current streak</p>
+                <p className="mt-1 text-xl font-bold text-[color:var(--foreground)]">{streakInfo.current}d</p>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)]/80 p-3 dark:border-zinc-800">
+                <p className="text-[11px] uppercase tracking-wider text-[color:var(--muted-foreground)]">Longest streak</p>
+                <p className="mt-1 text-xl font-bold text-[color:var(--foreground)]">{streakInfo.longest}d</p>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)]/80 p-3 dark:border-zinc-800">
+                <p className="text-[11px] uppercase tracking-wider text-[color:var(--muted-foreground)]">Workouts</p>
+                <p className="mt-1 text-xl font-bold text-[color:var(--foreground)]">{streakInfo.total}</p>
+              </div>
+              <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)]/80 p-3 dark:border-zinc-800">
+                <p className="text-[11px] uppercase tracking-wider text-[color:var(--muted-foreground)]">Badges</p>
+                <p className="mt-1 text-xl font-bold text-[color:var(--foreground)]">{achievements.length}</p>
+              </div>
+            </div>
+          </div>
+
           <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 shadow-sm dark:border-zinc-800">
-            <div className="flex items-center justify-between mb-4">
+            <div className="mb-4 flex items-center justify-between">
               <div>
-                <p className="text-sm font-semibold text-[color:var(--foreground)] flex items-center gap-2">
-                  <Award className="w-4 h-4" />
+                <p className="flex items-center gap-2 text-sm font-semibold text-[color:var(--foreground)]">
+                  <Award className="h-4 w-4" />
                   Achievements
                 </p>
                 <p className="text-xs text-[color:var(--muted-foreground)]">
-                  {achievements.length} badge{achievements.length !== 1 ? 's' : ''} earned
+                  {achievements.length} badge{achievements.length !== 1 ? 's' : ''} unlocked
                 </p>
               </div>
               <Link
                 href="/achievements"
                 className="flex items-center gap-1 text-xs font-medium text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] transition-colors"
               >
-                View All
-                <ChevronRight className="w-3 h-3" />
+                View all
+                <ChevronRight className="h-3 w-3" />
               </Link>
             </div>
 
@@ -262,23 +292,26 @@ export default function ProfilePage() {
               totalWorkouts={streakInfo.total}
             />
 
-            {/* Recent achievements */}
-            {achievements.length > 0 && (
-              <div className="mt-4 pt-3 border-t border-zinc-200 dark:border-zinc-800">
-                <div className="flex flex-wrap gap-2">
-                  {achievements.slice(0, 5).map((a) => (
-                    <span
-                      key={a.id}
-                      title={a.title}
-                      className="inline-flex items-center gap-1 px-2 py-1 rounded-full bg-zinc-100 dark:bg-zinc-800 text-xs"
-                    >
-                      <span>{a.icon}</span>
-                      <span className="text-[color:var(--foreground)] font-medium">{a.title}</span>
-                    </span>
+            <div className="mt-4 border-t border-zinc-200 pt-3 dark:border-zinc-800">
+              {achievements.length > 0 ? (
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  {achievements.slice(0, 6).map((badge) => (
+                    <div key={badge.id} className="rounded-xl border border-zinc-200 bg-zinc-50 p-3 dark:border-zinc-800 dark:bg-zinc-900">
+                      <p className="text-base">{badge.icon}</p>
+                      <p className="mt-1 text-sm font-semibold text-[color:var(--foreground)]">{badge.title}</p>
+                      <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">{badge.description}</p>
+                    </div>
                   ))}
                 </div>
-              </div>
-            )}
+              ) : (
+                <div className="rounded-xl border border-dashed border-zinc-200 p-4 text-center dark:border-zinc-800">
+                  <p className="text-sm font-medium text-[color:var(--foreground)]">No badges unlocked yet</p>
+                  <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
+                    Keep logging workouts and meals to unlock achievements automatically.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Smart Insights */}
@@ -330,30 +363,46 @@ export default function ProfilePage() {
                 <WeightChart data={weightLogs} targetWeight={activeGoal?.targetWeight} />
                 
                 <div className="mt-4 pt-4 border-t border-zinc-200 dark:border-zinc-800">
-                  <h4 className="text-xs font-semibold text-[color:var(--foreground)] mb-3">Recent Logs</h4>
-                  <div className="space-y-2">
-                    {weightLogs.slice(0, 5).map((log) => (
-                      <div
-                        key={log.id}
-                        className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                      >
-                        <div>
-                          <p className="text-sm font-medium text-[color:var(--foreground)]">
-                            {displayWeight(log.weight, unitSystem)}
+                  <button
+                    type="button"
+                    onClick={() => setRecentLogsOpen((prev) => !prev)}
+                    className="mb-3 flex w-full items-center justify-between rounded-lg px-1 py-1 text-left"
+                  >
+                    <span className="text-xs font-semibold text-[color:var(--foreground)]">
+                      Recent Logs ({Math.min(weightLogs.length, 5)})
+                    </span>
+                    {recentLogsOpen ? (
+                      <ChevronUp className="h-4 w-4 text-[color:var(--muted-foreground)]" />
+                    ) : (
+                      <ChevronDown className="h-4 w-4 text-[color:var(--muted-foreground)]" />
+                    )}
+                  </button>
+
+                  {recentLogsOpen && (
+                    <div className="space-y-2">
+                      {weightLogs.slice(0, 5).map((log) => (
+                        <div
+                          key={log.id}
+                          className="flex items-center justify-between py-2 px-3 rounded-lg hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                        >
+                          <div>
+                            <p className="text-sm font-medium text-[color:var(--foreground)]">
+                              {displayWeight(log.weight, unitSystem)}
+                            </p>
+                            {log.notes && (
+                              <p className="text-xs text-[color:var(--muted-foreground)]">{log.notes}</p>
+                            )}
+                          </div>
+                          <p className="text-xs text-[color:var(--muted-foreground)]">
+                            {new Date(log.date).toLocaleDateString([], {
+                              month: 'short',
+                              day: 'numeric',
+                            })}
                           </p>
-                          {log.notes && (
-                            <p className="text-xs text-[color:var(--muted-foreground)]">{log.notes}</p>
-                          )}
                         </div>
-                        <p className="text-xs text-[color:var(--muted-foreground)]">
-                          {new Date(log.date).toLocaleDateString([], {
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                        </p>
-                      </div>
-                    ))}
-                  </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
               </>
             ) : (

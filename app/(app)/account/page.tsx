@@ -5,22 +5,36 @@ import { useAuth } from '@/components/providers/AuthProvider';
 import { useUnits } from '@/components/providers/UnitProvider';
 import { useToast } from '@/lib/contexts/ToastContext';
 import { getUserProfile, updateUserProfile } from '@/lib/auth';
+import { getWeightLogs } from '@/lib/weightLogs';
+import { getActiveGoals } from '@/lib/goals';
 import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { UserProfile } from '@/lib/types/firestore';
 import { displayWeight, displayHeight } from '@/lib/utils/units';
 import AppLayout from '@/components/layout/AppLayout';
 import Link from 'next/link';
-import { User, Save, Ruler, Shield, FileText, ExternalLink } from 'lucide-react';
+import { User, Save, Ruler, Shield, FileText, ExternalLink, Bot, Loader2, CircleCheck, TriangleAlert } from 'lucide-react';
 import { useCachedData } from '@/lib/hooks/useCachedData';
 
 type Tab = 'profile' | 'preferences' | 'about';
+
+type FoodRecognizeHealthResponse = {
+  success: boolean;
+  configured: boolean;
+  primaryModel: string;
+  primaryAvailable?: boolean;
+  primaryGenerateCapable?: boolean;
+  runtimeStatus?: 'ok' | 'quota' | 'auth' | 'model' | 'error';
+  runtimeDetail?: string;
+  error?: string;
+  detail?: string;
+};
 
 export default function AccountPage() {
   const { user } = useAuth();
   const { unitSystem, setUnitSystem } = useUnits();
   const { showToast } = useToast();
 
-  const { data: profile, setData: setProfile } = useCachedData<UserProfile | null>({
+  const { data: profile } = useCachedData<UserProfile | null>({
     key: `profile:${user?.uid}`,
     fetcher: useCallback(() => getUserProfile(user!.uid), [user]),
     enabled: !!user,
@@ -28,16 +42,41 @@ export default function AccountPage() {
   });
 
   const loading = profile === undefined && !!user;
+  const { data: progressSnapshot } = useCachedData<{
+    latestWeightKg: number | null;
+    activeGoalTitle: string | null;
+  }>({
+    key: `account:progress-snapshot:${user?.uid}`,
+    fetcher: useCallback(async () => {
+      const [weights, goals] = await Promise.all([
+        getWeightLogs(user!.uid, 1).catch(() => []),
+        getActiveGoals(user!.uid).catch(() => []),
+      ]);
+
+      const latestWeight = weights[0]?.weight ?? null;
+      const weightGoal = goals.find((g) => g.type === 'weight');
+      const fallbackGoal = goals[0];
+
+      return {
+        latestWeightKg: latestWeight,
+        activeGoalTitle: weightGoal?.title ?? fallbackGoal?.title ?? null,
+      };
+    }, [user]),
+    enabled: !!user,
+    ttl: 2 * 60 * 1000,
+    staleTime: 60 * 1000,
+  });
+
   const [saving, setSaving] = useState(false);
   const [editName, setEditName] = useState('');
-  const [editGoal, setEditGoal] = useState('');
   const [activeTab, setActiveTab] = useState<Tab>('profile');
+  const [checkingAiStatus, setCheckingAiStatus] = useState(false);
+  const [aiHealth, setAiHealth] = useState<FoodRecognizeHealthResponse | null>(null);
 
   // Initialize form fields when profile loads
   useEffect(() => {
     if (profile) {
       setEditName(profile.name || user?.displayName || '');
-      setEditGoal(profile.goal || '');
     }
   }, [profile, user]);
 
@@ -47,13 +86,41 @@ export default function AccountPage() {
     try {
       await updateUserProfile(user.uid, {
         name: editName.trim(),
-        goal: editGoal as UserProfile['goal'],
       });
       showToast('Profile updated successfully!', 'success');
     } catch (error) {
       showToast(getErrorMessage(error, 'Failed to update profile'), 'error');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const checkAiStatus = async () => {
+    setCheckingAiStatus(true);
+    try {
+      const response = await fetch('/api/food-recognize/health', {
+        method: 'GET',
+        headers: { 'Content-Type': 'application/json' },
+      });
+
+      const data = (await response.json()) as FoodRecognizeHealthResponse;
+      setAiHealth(data);
+
+      if (response.ok && data.success) {
+        showToast('AI food scanner is ready.', 'success');
+      } else {
+        showToast(data.error || data.runtimeDetail || 'AI status check failed.', 'warning');
+      }
+    } catch {
+      showToast('Failed to check AI status. Please try again.', 'error');
+      setAiHealth({
+        success: false,
+        configured: false,
+        primaryModel: 'unknown',
+        error: 'Network error while checking AI status.',
+      });
+    } finally {
+      setCheckingAiStatus(false);
     }
   };
 
@@ -128,32 +195,33 @@ export default function AccountPage() {
                     />
                   </label>
 
-                  <label className="block text-sm font-medium">
-                    Fitness Goal
-                    <select
-                      value={editGoal}
-                      onChange={(e) => setEditGoal(e.target.value)}
-                      className="mt-1.5 w-full rounded-xl border border-zinc-200 bg-[color:var(--background)] px-4 py-2.5 text-sm outline-none focus:border-black dark:border-zinc-800 dark:focus:border-white"
-                    >
-                      <option value="Build strength">Build strength</option>
-                      <option value="Lose weight">Lose weight</option>
-                      <option value="Improve endurance">Improve endurance</option>
-                      <option value="Stay consistent">Stay consistent</option>
-                    </select>
-                  </label>
-
                   {profile && (
-                    <div className="grid grid-cols-2 gap-4 rounded-xl bg-zinc-50 p-3 dark:bg-zinc-900/50">
-                      <div>
-                        <p className="text-xs text-[color:var(--muted-foreground)]">Weight</p>
-                        <p className="text-sm font-medium text-[color:var(--foreground)]">
-                          {displayWeight(profile.weight, unitSystem)}
-                        </p>
+                    <div className="space-y-3 rounded-xl bg-zinc-50 p-3 dark:bg-zinc-900/50">
+                      <p className="text-xs font-semibold uppercase tracking-wider text-[color:var(--muted-foreground)]">
+                        Progress Snapshot
+                      </p>
+
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <p className="text-xs text-[color:var(--muted-foreground)]">Latest logged weight</p>
+                          <p className="text-sm font-medium text-[color:var(--foreground)]">
+                            {progressSnapshot?.latestWeightKg != null
+                              ? displayWeight(progressSnapshot.latestWeightKg, unitSystem)
+                              : displayWeight(profile.weight, unitSystem)}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-[color:var(--muted-foreground)]">Height</p>
+                          <p className="text-sm font-medium text-[color:var(--foreground)]">
+                            {displayHeight(profile.height, unitSystem)}
+                          </p>
+                        </div>
                       </div>
+
                       <div>
-                        <p className="text-xs text-[color:var(--muted-foreground)]">Height</p>
+                        <p className="text-xs text-[color:var(--muted-foreground)]">Active goal (from Progress)</p>
                         <p className="text-sm font-medium text-[color:var(--foreground)]">
-                          {displayHeight(profile.height, unitSystem)}
+                          {progressSnapshot?.activeGoalTitle || 'No active goal set'}
                         </p>
                       </div>
                     </div>
@@ -174,37 +242,83 @@ export default function AccountPage() {
 
           {/* Preferences Tab */}
           {activeTab === 'preferences' && (
-            <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-5 shadow-sm dark:border-zinc-800">
-              <p className="text-sm font-semibold text-[color:var(--foreground)] flex items-center gap-2 mb-1">
-                <Ruler className="w-4 h-4" />
-                Measurement Units
-              </p>
-              <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
-                Choose how weight and height are displayed throughout the app
-              </p>
-              <div className="flex rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-5 shadow-sm dark:border-zinc-800">
+                <p className="text-sm font-semibold text-[color:var(--foreground)] flex items-center gap-2 mb-1">
+                  <Ruler className="w-4 h-4" />
+                  Measurement Units
+                </p>
+                <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
+                  Choose how weight and height are displayed throughout the app
+                </p>
+                <div className="flex rounded-xl border border-zinc-200 dark:border-zinc-800 overflow-hidden">
+                  <button
+                    type="button"
+                    onClick={() => setUnitSystem('metric')}
+                    className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+                      unitSystem === 'metric'
+                        ? 'bg-[color:var(--foreground)] text-[color:var(--background)]'
+                        : 'bg-[color:var(--background)] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]'
+                    }`}
+                  >
+                    Metric (kg, cm)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setUnitSystem('imperial')}
+                    className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
+                      unitSystem === 'imperial'
+                        ? 'bg-[color:var(--foreground)] text-[color:var(--background)]'
+                        : 'bg-[color:var(--background)] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]'
+                    }`}
+                  >
+                    Imperial (lbs, ft)
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-5 shadow-sm dark:border-zinc-800">
+                <p className="text-sm font-semibold text-[color:var(--foreground)] flex items-center gap-2 mb-1">
+                  <Bot className="w-4 h-4" />
+                  AI Food Scanner
+                </p>
+                <p className="text-xs text-[color:var(--muted-foreground)] mb-4">
+                  Check if the Gemini API key, model, and quota are ready for meal scanning.
+                </p>
+
                 <button
                   type="button"
-                  onClick={() => setUnitSystem('metric')}
-                  className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
-                    unitSystem === 'metric'
-                      ? 'bg-[color:var(--foreground)] text-[color:var(--background)]'
-                      : 'bg-[color:var(--background)] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]'
-                  }`}
+                  onClick={checkAiStatus}
+                  disabled={checkingAiStatus}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-2.5 text-sm font-medium text-[color:var(--foreground)] transition-colors hover:bg-zinc-100 disabled:opacity-60 dark:border-zinc-700 dark:bg-zinc-900 dark:hover:bg-zinc-800"
                 >
-                  Metric (kg, cm)
+                  {checkingAiStatus ? <Loader2 className="w-4 h-4 animate-spin" /> : <Bot className="w-4 h-4" />}
+                  {checkingAiStatus ? 'Checking AI status...' : 'Check AI Status'}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => setUnitSystem('imperial')}
-                  className={`flex-1 py-2.5 text-sm font-medium transition-colors ${
-                    unitSystem === 'imperial'
-                      ? 'bg-[color:var(--foreground)] text-[color:var(--background)]'
-                      : 'bg-[color:var(--background)] text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)]'
-                  }`}
-                >
-                  Imperial (lbs, ft)
-                </button>
+
+                {aiHealth && (
+                  <div className={`mt-3 rounded-xl border p-3 text-xs ${
+                    aiHealth.success
+                      ? 'border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300'
+                      : 'border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300'
+                  }`}>
+                    <p className="flex items-center gap-1.5 font-semibold">
+                      {aiHealth.success ? <CircleCheck className="w-3.5 h-3.5" /> : <TriangleAlert className="w-3.5 h-3.5" />}
+                      {aiHealth.success ? 'AI scanner is ready' : 'AI scanner needs attention'}
+                    </p>
+                    <p className="mt-1">
+                      Model: <span className="font-medium">{aiHealth.primaryModel}</span>
+                    </p>
+                    {aiHealth.runtimeStatus ? (
+                      <p>
+                        Runtime: <span className="font-medium">{aiHealth.runtimeStatus}</span>
+                      </p>
+                    ) : null}
+                    <p className="mt-1">
+                      {aiHealth.runtimeDetail || aiHealth.error || 'No additional details available.'}
+                    </p>
+                  </div>
+                )}
               </div>
             </div>
           )}

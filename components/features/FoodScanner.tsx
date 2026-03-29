@@ -165,7 +165,6 @@ export default function FoodScanner({ onResult, disabled = false }: FoodScannerP
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        capture="environment"
         onChange={handleFileSelect}
         className="hidden"
         disabled={disabled || isScanning}

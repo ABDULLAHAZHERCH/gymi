@@ -34,7 +34,12 @@ export default function Modal({ isOpen, onClose, children }: ModalProps) {
       />
 
       {/* Modal Content */}
-      <div className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 md:p-5 shadow-xl dark:border-zinc-800">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-label="Dialog"
+        className="relative z-10 w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 md:p-5 shadow-xl dark:border-zinc-800"
+      >
         {children}
       </div>
     </div>

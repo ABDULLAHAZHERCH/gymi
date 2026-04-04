@@ -18,6 +18,7 @@ import {
   Loader,
   Camera,
   AlertCircle,
+  Activity,
 } from 'lucide-react';
 import {
   usePoseWebSocket,
@@ -477,6 +478,7 @@ export default function CoachPage() {
               onClick={handleReset}
               className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 backdrop-blur-md transition-colors hover:bg-white/25"
               title="Reset"
+              aria-label="Reset session"
             >
               <RotateCcw className="h-5 w-5 text-white" />
             </button>
@@ -487,6 +489,7 @@ export default function CoachPage() {
                   ? 'bg-red-500 hover:bg-red-600'
                   : 'bg-white hover:bg-zinc-200'
               }`}
+              aria-label={isStreaming ? 'Stop session' : 'Start session'}
             >
               {isStreaming ? (
                 <Square className="h-6 w-6 text-white" />
@@ -498,6 +501,7 @@ export default function CoachPage() {
               onClick={toggleFullscreen}
               className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 backdrop-blur-md transition-colors hover:bg-white/25"
               title="Exit fullscreen"
+              aria-label="Exit fullscreen"
             >
               <Minimize className="h-5 w-5 text-white" />
             </button>
@@ -607,18 +611,41 @@ export default function CoachPage() {
               )}
             </div>
           ) : exerciseMode === 'live' && !isStreaming ? (
-            /* Placeholder */
-            <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-4 sm:aspect-video">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10">
-                <Video className="h-6 w-6 text-white/60" />
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-medium text-white/80">
-                  Live Camera
-                </p>
-                <p className="text-xs text-white/40 mt-1">
-                  Press play to start
-                </p>
+            /* Placeholder / How it works */
+            <div className="flex aspect-[4/3] w-full flex-col items-center justify-center p-6 sm:aspect-video relative overflow-hidden">
+              <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 to-purple-900/20" />
+              <div className="z-10 flex flex-col items-center max-w-md w-full gap-4 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 shadow-lg backdrop-blur-md mb-2">
+                  <Activity className="h-8 w-8 text-blue-400 animate-pulse" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-bold text-white mb-2">
+                    AI Form Coach
+                  </h3>
+                  <p className="text-sm text-zinc-300">
+                    Real-time pose detection analyzes your reps, tracks accuracy, and spots form errors instantly.
+                  </p>
+                </div>
+                
+                <div className="w-full grid grid-cols-2 gap-3 mt-4 text-left">
+                  <div className="rounded-xl bg-white/5 p-3 backdrop-blur-md border border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Video className="w-4 h-4 text-blue-400" />
+                      <span className="text-xs font-semibold text-white">Full Body</span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400">Step back so your whole body is visible in frame.</p>
+                  </div>
+                  <div className="rounded-xl bg-white/5 p-3 backdrop-blur-md border border-white/10">
+                    <div className="flex items-center gap-2 mb-1">
+                      <Target className="w-4 h-4 text-emerald-400" />
+                      <span className="text-xs font-semibold text-white">Auto-Track</span>
+                    </div>
+                    <p className="text-[10px] text-zinc-400">Once recording, the AI automatically counts reps.</p>
+                  </div>
+                </div>
+                <div className="mt-4 text-xs font-medium text-white/50 bg-white/5 px-4 py-2 rounded-full border border-white/5">
+                  <span className="animate-pulse mr-2 inline-block">●</span> Press play below to start
+                </div>
               </div>
             </div>
           ) : (
@@ -704,6 +731,7 @@ export default function CoachPage() {
               }}
               className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)] dark:border-zinc-800"
               title="Switch camera"
+              aria-label="Switch camera"
             >
               <SwitchCamera className="h-5 w-5" />
             </button>
@@ -714,6 +742,7 @@ export default function CoachPage() {
             disabled={!feedback && sessionStats.totalReps === 0}
             className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)] disabled:opacity-30 dark:border-zinc-800"
             title="Reset session"
+            aria-label="Reset session"
           >
             <RotateCcw className="h-5 w-5" />
           </button>
@@ -726,6 +755,7 @@ export default function CoachPage() {
                 : 'bg-[color:var(--foreground)] hover:opacity-90'
             }`}
             title={isStreaming ? 'Stop' : 'Start'}
+            aria-label={isStreaming ? 'Stop session' : 'Start session'}
           >
             {isStreaming ? (
               <Square className="h-5 w-5" />
@@ -738,6 +768,7 @@ export default function CoachPage() {
             onClick={toggleFullscreen}
             className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)] dark:border-zinc-800"
             title="Fullscreen"
+            aria-label="Toggle fullscreen"
           >
             <Maximize className="h-5 w-5" />
           </button>

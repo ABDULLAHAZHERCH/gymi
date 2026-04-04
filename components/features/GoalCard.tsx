@@ -99,6 +99,7 @@ export default function GoalCard({ goal, progress = 0, onEdit, onDelete, onCompl
               onClick={() => onComplete(goal.id)}
               className="p-2 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/20 text-green-600 dark:text-green-400"
               title="Mark as complete"
+              aria-label="Mark goal as complete"
             >
               <CheckCircle className="w-4 h-4" />
             </button>
@@ -107,6 +108,7 @@ export default function GoalCard({ goal, progress = 0, onEdit, onDelete, onCompl
             onClick={() => onEdit(goal)}
             className="p-2 rounded-lg hover:bg-zinc-100 dark:hover:bg-zinc-800 text-[color:var(--muted-foreground)]"
             title="Edit goal"
+            aria-label="Edit goal"
           >
             <Edit className="w-4 h-4" />
           </button>
@@ -114,6 +116,7 @@ export default function GoalCard({ goal, progress = 0, onEdit, onDelete, onCompl
             onClick={() => onDelete(goal.id)}
             className="p-2 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400"
             title="Delete goal"
+            aria-label="Delete goal"
           >
             <Trash2 className="w-4 h-4" />
           </button>

@@ -101,6 +101,7 @@ export default function MealCard({ meal, onEdit, onDelete }: MealCardProps) {
             onClick={() => onEdit(meal)}
             className="rounded-lg p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800"
             title="Edit"
+            aria-label="Edit meal"
           >
             <Edit2 className="h-4 w-4" />
           </button>
@@ -108,6 +109,7 @@ export default function MealCard({ meal, onEdit, onDelete }: MealCardProps) {
             onClick={() => onDelete(meal.id)}
             className="rounded-lg p-2 hover:bg-red-50 dark:hover:bg-red-900/20"
             title="Delete"
+            aria-label="Delete meal"
           >
             <Trash2 className="h-4 w-4 text-red-500" />
           </button>

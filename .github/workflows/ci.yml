@@ -1,0 +1,48 @@
+name: GYMI CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [24.x] # Matching Vercel runtime specification
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ matrix.node-version }}
+        cache: 'npm'
+
+    - name: Clean Install Dependencies
+      run: npm ci
+
+    - name: Code Quality & Linting
+      run: npm run lint
+
+    - name: Execute Unit Tests
+      run: npm test
+
+    - name: Verify Production Build
+      # We skip actual deployment here since Vercel hooks into main automatically.
+      # This step just guarantees the codebase compiles perfectly.
+      run: npm run build
+      env:
+        # Provide dummy keys to satisfy the Next.js build requirement if it attempts to validate them at build time.
+        NEXT_PUBLIC_FIREBASE_API_KEY: "dummy"
+        NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN: "dummy"
+        NEXT_PUBLIC_FIREBASE_PROJECT_ID: "dummy"
+        NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET: "dummy"
+        NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID: "dummy"
+        NEXT_PUBLIC_FIREBASE_APP_ID: "dummy"
+        NEXT_PUBLIC_FIREBASE_MEASUREMENT_ID: "dummy"

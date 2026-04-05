@@ -111,7 +111,7 @@ export async function POST(request: NextRequest) {
     };
 
     // Gather user context from database (stats, history, etc.)
-    let enrichedContext = userContext || {};
+    const enrichedContext = userContext || {};
     // Note: Additional user context (stats, history) would be gathered on the client side
     // and passed in the userContext parameter
 

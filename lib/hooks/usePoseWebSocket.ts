@@ -1,34 +1,20 @@
 'use client';
 
-import { useEffect, useRef, useCallback, useState } from 'react';
+import { useEffect, useRef, useCallback, useState, useId } from 'react';
 import { config } from '@/lib/config';
+import type {
+  PoseLandmark,
+  WsFormCorrectionResponse,
+  WsPoseRequest,
+} from '@/lib/contracts/integration';
 
-export interface PoseLandmark {
-  x: number;
-  y: number;
-  z: number;
-  visibility: number;
-}
-
-export interface FormCorrectionResponse {
-  state: 'idle' | 'scanning' | 'active';
-  current_exercise: 'SQUAT' | 'PUSHUP' | 'BICEP_CURL' | null;
-  exercise_display: string;
-  rep_count: number;
-  rep_phase: 'idle' | 'up' | 'down' | 'static';
-  is_rep_valid: boolean;
-  violations: string[];
-  corrections: string[];
-  correction_message: string;
-  joint_colors: Record<string, string>;
-  confidence: number;
-  timestamp: number;
-}
+export type { PoseLandmark, WsFormCorrectionResponse, WsPoseRequest };
+export type FormCorrectionResponse = WsFormCorrectionResponse;
 
 interface UsePoseWebSocketOptions {
   clientId?: string;
   enabled?: boolean;
-  onMessage?: (response: FormCorrectionResponse) => void;
+  onMessage?: (response: WsFormCorrectionResponse) => void;
   onError?: (error: Error) => void;
   onConnect?: () => void;
   onDisconnect?: () => void;
@@ -47,8 +33,9 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
   const wsRef = useRef<WebSocket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
-  const [lastResponse, setLastResponse] = useState<FormCorrectionResponse | null>(null);
+  const [lastResponse, setLastResponse] = useState<WsFormCorrectionResponse | null>(null);
   const reconnectAttemptsRef = useRef(0);
+  const connectRef = useRef<(nextClientId?: string) => void>(() => {});
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastErrorTimeRef = useRef(0);
   const errorReportedRef = useRef(false);
@@ -58,10 +45,15 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
   const mountedRef = useRef(true);
   const maxReconnectAttempts = 5;
 
-  // Stable client ID across renders
-  const clientIdRef = useRef(
-    externalClientId || `gymi_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-  );
+  // Stable client ID for the entire hook lifetime.
+  const fallbackClientId = useId().replace(/[:]/g, '_');
+  const initialClientId = externalClientId || `gymi_${fallbackClientId}`;
+  const [clientId, setClientId] = useState(initialClientId);
+  const clientIdRef = useRef(clientId);
+
+  useEffect(() => {
+    clientIdRef.current = clientId;
+  }, [clientId]);
 
   // Keep refs stable for callbacks (avoid re-creating WS on callback changes)
   const callbacksRef = useRef({ onMessage, onError, onConnect, onDisconnect });
@@ -91,7 +83,12 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
   }, []);
 
   // Connect to WebSocket
-  const connect = useCallback(() => {
+  const connect = useCallback((nextClientId?: string) => {
+    if (nextClientId && nextClientId !== clientIdRef.current) {
+      clientIdRef.current = nextClientId;
+      setClientId(nextClientId);
+    }
+
     if (connectingRef.current) return;
     if (wsRef.current?.readyState === WebSocket.OPEN) return;
 
@@ -131,7 +128,7 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
       ws.onmessage = (event) => {
         if (!mountedRef.current) return;
         try {
-          const response: FormCorrectionResponse = JSON.parse(event.data);
+          const response: WsFormCorrectionResponse = JSON.parse(event.data);
           setLastResponse(response);
           callbacksRef.current.onMessage?.(response);
         } catch {
@@ -173,7 +170,9 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
             15000
           );
           reconnectTimerRef.current = setTimeout(() => {
-            if (enabledRef.current && mountedRef.current) connect();
+            if (enabledRef.current && mountedRef.current) {
+              connectRef.current();
+            }
           }, backoffMs);
         } else {
           // Max retries reached — notify once
@@ -194,12 +193,18 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
         callbacksRef.current.onError?.(new Error('Failed to create WebSocket'));
       }
     }
-  }, []); // Stable — reads config/clientId from refs/module scope
+  }, []);
+
+  useEffect(() => {
+    connectRef.current = connect;
+  }, [connect]);
 
   // Send landmarks to server
   const sendLandmarks = useCallback(
     (landmarks: PoseLandmark[], timestamp?: number) => {
-      const message = JSON.stringify({
+      if (!landmarks.length) return;
+
+      const request: WsPoseRequest = {
         landmarks: landmarks.map((lm) => ({
           x: lm.x,
           y: lm.y,
@@ -207,7 +212,9 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
           visibility: lm.visibility,
         })),
         timestamp: timestamp ?? Date.now(),
-      });
+      };
+
+      const message = JSON.stringify(request);
 
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(message);
@@ -257,11 +264,15 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
 
   // Auto-connect/disconnect based on `enabled` prop
   useEffect(() => {
-    if (enabled) {
-      connect();
-    } else {
-      disconnect();
-    }
+    const timer = setTimeout(() => {
+      if (enabled) {
+        connect();
+      } else {
+        disconnect();
+      }
+    }, 0);
+
+    return () => clearTimeout(timer);
   }, [enabled, connect, disconnect]);
 
   return {
@@ -272,6 +283,6 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
     resetSession,
     connect,
     disconnect,
-    clientId: clientIdRef.current,
+    clientId,
   };
 }

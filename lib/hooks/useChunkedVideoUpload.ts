@@ -2,6 +2,14 @@
 
 import { useState, useCallback, useRef } from 'react';
 import { config } from '@/lib/config';
+import {
+  cancelUploadSession,
+  completeUploadSession,
+  getUploadStatus,
+  initUploadSession,
+  uploadChunkPart,
+} from '@/lib/api/upload';
+import type { UploadCompleteResponse } from '@/lib/contracts/integration';
 
 /* ------------------------------------------------------------------ */
 /*  Types                                                              */
@@ -24,15 +32,13 @@ export interface UploadProgress {
   filePath?: string;
 }
 
+export type UploadCompleteResult = UploadCompleteResponse;
+
 interface UseChunkedVideoUploadOptions {
   chunkSize?: number;
   maxRetries?: number;
   onProgress?: (progress: UploadProgress) => void;
-  onComplete?: (result: {
-    filename: string;
-    file_path: string;
-    size: number;
-  }) => void;
+  onComplete?: (result: UploadCompleteResult) => void;
   onError?: (error: Error) => void;
 }
 
@@ -61,6 +67,7 @@ export function useChunkedVideoUpload(
   });
 
   const abortControllerRef = useRef<AbortController | null>(null);
+  const uploadIdRef = useRef<string | null>(null);
   const isPausedRef = useRef(false);
 
   /* ---- helpers ---- */
@@ -76,45 +83,44 @@ export function useChunkedVideoUpload(
     [onProgress]
   );
 
-  const uploadChunk = async (
-    uploadId: string,
-    chunk: Blob,
-    chunkIndex: number,
-    retries = 0
-  ): Promise<boolean> => {
-    try {
-      const formData = new FormData();
-      formData.append('chunk', chunk);
-
-      const res = await fetch(
-        `${apiBaseUrl}${config.api.endpoints.uploadChunk}/${uploadId}?chunk_index=${chunkIndex}`,
-        {
-          method: 'POST',
-          body: formData,
+  const uploadChunkWithRetry = useCallback(
+    async function uploadChunkWithRetryFn(
+      uploadId: string,
+      chunk: Blob,
+      chunkIndex: number,
+      retries = 0
+    ): Promise<void> {
+      try {
+        await uploadChunkPart(uploadId, chunk, chunkIndex, {
+          apiBaseUrl,
           signal: abortControllerRef.current?.signal,
+        });
+      } catch (error) {
+        if ((error as Error).name === 'AbortError') throw error;
+
+        if (retries < maxRetries) {
+          await new Promise((r) =>
+            setTimeout(r, 1000 * Math.pow(2, retries))
+          );
+          return uploadChunkWithRetryFn(
+            uploadId,
+            chunk,
+            chunkIndex,
+            retries + 1
+          );
         }
-      );
-
-      if (!res.ok) throw new Error(`Chunk upload failed: ${res.statusText}`);
-      return true;
-    } catch (error) {
-      if ((error as Error).name === 'AbortError') throw error;
-
-      if (retries < maxRetries) {
-        await new Promise((r) =>
-          setTimeout(r, 1000 * Math.pow(2, retries))
-        );
-        return uploadChunk(uploadId, chunk, chunkIndex, retries + 1);
+        throw error;
       }
-      throw error;
-    }
-  };
+    },
+    [apiBaseUrl, maxRetries]
+  );
 
   /* ---- main upload ---- */
 
   const upload = useCallback(
-    async (file: File) => {
+    async (file: File): Promise<UploadCompleteResult | null> => {
       abortControllerRef.current = new AbortController();
+      uploadIdRef.current = null;
       isPausedRef.current = false;
 
       const totalChunks = Math.ceil(file.size / chunkSize);
@@ -127,35 +133,26 @@ export function useChunkedVideoUpload(
 
       try {
         // 1. Init
-        const initRes = await fetch(
-          `${apiBaseUrl}${config.api.endpoints.uploadInit}`,
+        const { upload_id } = await initUploadSession(
           {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              filename: file.name,
-              total_size: file.size,
-              total_chunks: totalChunks,
-            }),
+            filename: file.name,
+            total_size: file.size,
+            total_chunks: totalChunks,
+          },
+          {
+            apiBaseUrl,
             signal: abortControllerRef.current.signal,
           }
         );
-        if (!initRes.ok)
-          throw new Error(`Init failed: ${initRes.statusText}`);
 
-        const { upload_id } = await initRes.json();
+        uploadIdRef.current = upload_id;
         updateProgress({ status: 'uploading', uploadId: upload_id });
 
         // 2. Check already-uploaded chunks (resume support)
         let uploaded = new Set<number>();
         try {
-          const statusRes = await fetch(
-            `${apiBaseUrl}${config.api.endpoints.uploadStatus}/${upload_id}`
-          );
-          if (statusRes.ok) {
-            const status = await statusRes.json();
-            uploaded = new Set(status.uploaded_chunks || []);
-          }
+          const status = await getUploadStatus(upload_id, { apiBaseUrl });
+          uploaded = new Set(status.uploaded_chunks || []);
         } catch {
           /* ignore */
         }
@@ -164,7 +161,7 @@ export function useChunkedVideoUpload(
         for (let i = 0; i < totalChunks; i++) {
           if (isPausedRef.current) {
             updateProgress({ status: 'paused' });
-            return;
+            return null;
           }
 
           if (uploaded.has(i)) {
@@ -177,7 +174,7 @@ export function useChunkedVideoUpload(
 
           const start = i * chunkSize;
           const end = Math.min(start + chunkSize, file.size);
-          await uploadChunk(upload_id, file.slice(start, end), i);
+          await uploadChunkWithRetry(upload_id, file.slice(start, end), i);
           uploaded.add(i);
 
           updateProgress({
@@ -188,28 +185,34 @@ export function useChunkedVideoUpload(
 
         // 4. Complete
         updateProgress({ status: 'completing' });
-        const completeRes = await fetch(
-          `${apiBaseUrl}${config.api.endpoints.uploadComplete}/${upload_id}`,
-          { method: 'POST', signal: abortControllerRef.current.signal }
-        );
-        if (!completeRes.ok)
-          throw new Error('Failed to complete upload');
+        const result = await completeUploadSession(upload_id, {
+          apiBaseUrl,
+          signal: abortControllerRef.current.signal,
+        });
 
-        const result = await completeRes.json();
         updateProgress({
           status: 'complete',
           progress: 100,
           filePath: result.file_path,
         });
         onComplete?.(result);
+        return result;
       } catch (error) {
         const err =
           error instanceof Error ? error : new Error('Upload failed');
         updateProgress({ status: 'error', error: err.message });
         onError?.(err);
+        return null;
       }
     },
-    [apiBaseUrl, chunkSize, updateProgress, onComplete, onError]
+    [
+      apiBaseUrl,
+      chunkSize,
+      updateProgress,
+      onComplete,
+      onError,
+      uploadChunkWithRetry,
+    ]
   );
 
   /* ---- controls ---- */
@@ -226,15 +229,27 @@ export function useChunkedVideoUpload(
     [upload]
   );
 
-  const cancel = useCallback(() => {
+  const cancel = useCallback(async () => {
+    const uploadId = uploadIdRef.current;
+
     abortControllerRef.current?.abort();
+    uploadIdRef.current = null;
+
+    if (uploadId) {
+      try {
+        await cancelUploadSession(uploadId, { apiBaseUrl });
+      } catch {
+        // Ignore cancel endpoint failures to keep local UI responsive.
+      }
+    }
+
     setProgress({
       progress: 0,
       uploadedChunks: 0,
       totalChunks: 0,
       status: 'idle',
     });
-  }, []);
+  }, [apiBaseUrl]);
 
   return {
     upload,

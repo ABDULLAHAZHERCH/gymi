@@ -3,7 +3,9 @@
  */
 
 const rawBaseUrl =
-  process.env.NEXT_PUBLIC_FORM_COACH_URL || 'http://localhost:8000';
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  process.env.NEXT_PUBLIC_FORM_COACH_URL ||
+  'http://localhost:8000';
 
 // Derive WebSocket and HTTP base URLs from the single env var
 function toWsUrl(url: string): string {
@@ -32,6 +34,8 @@ export const config = {
       uploadChunk: '/api/upload/chunk',
       uploadStatus: '/api/upload/status',
       uploadComplete: '/api/upload/complete',
+      uploadCancel: '/api/upload',
+      uploadFiles: '/api/upload/files',
       reset: '/api/reset',
       ws: {
         pose: '/api/ws/pose',

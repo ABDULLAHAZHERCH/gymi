@@ -8,10 +8,21 @@
  * landmarks from the detection result.
  */
 
-import type { PoseLandmark } from '@/lib/hooks/usePoseWebSocket';
+import type { PoseLandmark } from '@/lib/contracts/integration';
 
 // Keep a singleton so we don't re-initialise on every component mount
-let poseLandmarkerPromise: Promise<any> | null = null;
+let poseLandmarkerPromise: Promise<unknown> | null = null;
+
+interface RawPoseLandmark {
+  x?: number;
+  y?: number;
+  z?: number;
+  visibility?: number;
+}
+
+interface PoseDetectionResult {
+  landmarks?: RawPoseLandmark[][];
+}
 
 /**
  * Lazily creates (or returns the cached) PoseLandmarker instance.
@@ -47,16 +58,20 @@ export async function getPoseLandmarker(modelPath: string) {
  * Extract the first person's landmarks from a PoseLandmarker result.
  * Returns an array of 33 landmarks or an empty array if none detected.
  */
-export function extractLandmarks(result: any): PoseLandmark[] {
-  if (!result?.landmarks || result.landmarks.length === 0) {
+export function extractLandmarks(result: unknown): PoseLandmark[] {
+  const landmarks = (result as PoseDetectionResult | null)?.landmarks;
+
+  if (!landmarks || landmarks.length === 0) {
     return [];
   }
 
-  return result.landmarks[0].map((lm: any) => ({
-    x: lm.x as number,
-    y: lm.y as number,
-    z: lm.z as number,
-    visibility: lm.visibility as number,
+  return landmarks[0].map((lm) => ({
+    x: Number.isFinite(lm.x) ? (lm.x as number) : 0,
+    y: Number.isFinite(lm.y) ? (lm.y as number) : 0,
+    z: Number.isFinite(lm.z) ? (lm.z as number) : 0,
+    visibility: Number.isFinite(lm.visibility)
+      ? (lm.visibility as number)
+      : 1,
   }));
 }
 

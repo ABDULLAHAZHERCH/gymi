@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useRef, useEffect, useState } from 'react';
+import { useCallback, useRef, useEffect, useState, useId } from 'react';
 import {
   Play,
   Square,
@@ -16,7 +16,6 @@ import {
   AlertTriangle,
   SwitchCamera,
   Loader,
-  Camera,
   AlertCircle,
   Activity,
 } from 'lucide-react';
@@ -25,7 +24,6 @@ import {
   type FormCorrectionResponse,
   type PoseLandmark,
 } from '@/lib/hooks/usePoseWebSocket';
-import { useChunkedVideoUpload } from '@/lib/hooks/useChunkedVideoUpload';
 import { useToast } from '@/lib/contexts/ToastContext';
 import { useAuth } from '@/components/providers/AuthProvider';
 import AppLayout from '@/components/layout/AppLayout';
@@ -43,6 +41,9 @@ import {
 /** Minimum interval (ms) between MediaPipe detections (~20 fps). */
 const DETECTION_INTERVAL_MS = 50;
 
+/** Minimum landmark visibility for drawing joints/segments. */
+const MIN_DRAW_VISIBILITY = 0.2;
+
 /** Joint-name mapping for skeleton overlay colors from backend */
 const JOINT_NAMES: Record<number, string> = {
   11: 'left_shoulder',
@@ -59,6 +60,10 @@ const JOINT_NAMES: Record<number, string> = {
   28: 'right_ankle',
 };
 
+interface PoseLandmarkerLike {
+  detectForVideo: (video: HTMLVideoElement, now: number) => unknown;
+}
+
 /* ------------------------------------------------------------------ */
 /*  Component                                                          */
 /* ------------------------------------------------------------------ */
@@ -74,6 +79,8 @@ export default function CoachPage() {
   const { user } = useAuth();
   const { showToast } = useToast();
   const containerRef = useRef<HTMLDivElement>(null);
+  const guestId = useId().replace(/[:]/g, '_');
+  const stableClientId = user?.uid || `guest_${guestId}`;
 
   // Camera state
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -87,8 +94,12 @@ export default function CoachPage() {
   const [mediapipeReady, setMediapipeReady] = useState(false);
   const [mediapipeLoading, setMediapipeLoading] = useState(false);
 
-  const [feedback, setFeedback] = useState<FormCorrectionResponse | null>(null);
+  const [formResponse, setFormResponse] = useState<FormCorrectionResponse | null>(null);
+  const [currentLandmarks, setCurrentLandmarks] = useState<PoseLandmark[]>([]);
   const [exerciseMode, setExerciseMode] = useState<'live' | 'upload'>('live');
+  const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null);
+  const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
+  const [isPreparingUploadVideo, setIsPreparingUploadVideo] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>(
     'environment'
@@ -101,23 +112,26 @@ export default function CoachPage() {
   });
 
   // Pose detection ref
-  const poseLandmarkerRef = useRef<any>(null);
+  const poseLandmarkerRef = useRef<PoseLandmarkerLike | null>(null);
   const lastDetectTimeRef = useRef(0);
+  const lastFrameTimestampRef = useRef(0);
+  const uploadObjectUrlRef = useRef<string | null>(null);
+  const jointColorsRef = useRef<Record<string, string>>({});
+  const uploadPlayStartingRef = useRef(false);
 
   // WebSocket hook
   const {
     isConnected,
     isConnecting,
     sendLandmarks,
-    lastResponse,
     resetSession,
     connect: wsConnect,
     disconnect: wsDisconnect,
   } = usePoseWebSocket({
-    clientId: user?.uid || `guest-${Date.now()}`,
+    clientId: stableClientId,
     enabled: false, // manual connect/disconnect
     onMessage: (response) => {
-      setFeedback(response);
+      setFormResponse(response);
       setSessionStats((prev) => {
         const next = { ...prev };
         if (response.rep_count > next.totalReps) {
@@ -136,18 +150,6 @@ export default function CoachPage() {
       showToast('Disconnected from form analysis', 'warning'),
   });
 
-  // Video upload hook
-  const {
-    upload: uploadVideo,
-    progress: uploadProgress,
-    isUploading,
-    cancel: cancelUpload,
-  } = useChunkedVideoUpload({
-    onComplete: (result) =>
-      showToast(`Video uploaded: ${result.filename}`, 'success'),
-    onError: (err) => showToast(`Upload failed: ${err.message}`, 'error'),
-  });
-
   /* --------------------------------------------------------------- */
   /*  MediaPipe initialisation                                        */
   /* --------------------------------------------------------------- */
@@ -156,9 +158,9 @@ export default function CoachPage() {
     if (poseLandmarkerRef.current) return;
     setMediapipeLoading(true);
     try {
-      poseLandmarkerRef.current = await getPoseLandmarker(
+      poseLandmarkerRef.current = (await getPoseLandmarker(
         config.pose.modelPath
-      );
+      )) as PoseLandmarkerLike;
       setMediapipeReady(true);
     } catch (err) {
       console.error('[Coach] MediaPipe init failed:', err);
@@ -183,6 +185,7 @@ export default function CoachPage() {
       streamRef.current = null;
     }
     if (videoRef.current) {
+      videoRef.current.pause();
       videoRef.current.srcObject = null;
     }
     setCameraReady(false);
@@ -211,19 +214,54 @@ export default function CoachPage() {
       } else {
         setCameraError('Camera error. Please check permissions and try again.');
       }
+      throw e;
     }
   }, [facingMode]);
 
+  const loadUploadedFile = useCallback((file: File) => {
+    if (uploadObjectUrlRef.current) {
+      URL.revokeObjectURL(uploadObjectUrlRef.current);
+      uploadObjectUrlRef.current = null;
+    }
+
+    const objectUrl = URL.createObjectURL(file);
+    uploadObjectUrlRef.current = objectUrl;
+
+    setUploadedVideoUrl(objectUrl);
+    setUploadedFilename(file.name);
+    setIsPreparingUploadVideo(true);
+    setCameraError(null);
+    setCameraReady(false);
+    setCurrentLandmarks([]);
+    setFormResponse(null);
+  }, []);
+
   /* --------------------------------------------------------------- */
-  /*  Frame processing loop (MediaPipe → WebSocket)                   */
+  /*  Frame processing loop (MediaPipe → landmarks state)             */
   /* --------------------------------------------------------------- */
 
   const processFrame = useCallback(() => {
     if (!videoRef.current || !poseLandmarkerRef.current) return;
 
     const video = videoRef.current;
+    const canvas = overlayCanvasRef.current;
+
+    const clearOverlay = () => {
+      if (!canvas) return;
+      const context = canvas.getContext('2d');
+      if (context) {
+        context.clearRect(0, 0, canvas.width, canvas.height);
+      }
+    };
+
     if (video.readyState < 2) {
       // video not ready yet
+      clearOverlay();
+      animFrameRef.current = requestAnimationFrame(processFrame);
+      return;
+    }
+
+    if (video.paused || video.ended) {
       animFrameRef.current = requestAnimationFrame(processFrame);
       return;
     }
@@ -232,35 +270,81 @@ export default function CoachPage() {
     if (now - lastDetectTimeRef.current >= DETECTION_INTERVAL_MS) {
       lastDetectTimeRef.current = now;
 
+      // MediaPipe expects timestamps to be globally monotonic for a landmarker instance.
+      // Do not use video.currentTime here, because replaying upload/live sources resets it.
+      const monotonicNowMs = Math.floor(now);
+      const frameTimestampMs = Math.max(
+        monotonicNowMs,
+        lastFrameTimestampRef.current + 1
+      );
+      lastFrameTimestampRef.current = frameTimestampMs;
+
       try {
-        const result = poseLandmarkerRef.current.detectForVideo(video, now);
+        const result = poseLandmarkerRef.current.detectForVideo(
+          video,
+          frameTimestampMs
+        );
         const landmarks: PoseLandmark[] = extractLandmarks(result);
 
-        if (landmarks.length > 0) {
-          // Send to backend
-          sendLandmarks(landmarks, now);
-
-          // Draw skeleton overlay
+        if (landmarks.length === 33) {
+          setCurrentLandmarks(landmarks);
           drawSkeleton(
-            overlayCanvasRef.current,
+            canvas,
             video,
             landmarks,
-            feedback?.joint_colors ?? {}
+            jointColorsRef.current
           );
+        } else {
+          setCurrentLandmarks([]);
+          clearOverlay();
         }
       } catch {
         // Occasional detection failures are expected — skip frame
+        clearOverlay();
       }
     }
 
     animFrameRef.current = requestAnimationFrame(processFrame);
-  }, [sendLandmarks, feedback?.joint_colors]);
+  }, []);
 
   /* --------------------------------------------------------------- */
   /*  Session controls                                                */
   /* --------------------------------------------------------------- */
 
   const handleStartSession = useCallback(async () => {
+    if (exerciseMode === 'upload' && isPreparingUploadVideo) {
+      showToast('Please wait while the uploaded video is preparing', 'info');
+      return;
+    }
+
+    if (exerciseMode === 'upload' && !uploadedVideoUrl) {
+      showToast('Upload a video before starting analysis', 'warning');
+      return;
+    }
+
+    if (exerciseMode === 'upload') {
+      const video = videoRef.current;
+      if (!video) {
+        showToast('Uploaded video is not ready', 'warning');
+        return;
+      }
+
+      setCameraError(null);
+      if (video.ended) {
+        video.currentTime = 0;
+      }
+
+      try {
+        await video.play();
+      } catch {
+        showToast('Unable to play uploaded video', 'error');
+      }
+      return;
+    }
+
+    setFormResponse(null);
+    setCurrentLandmarks([]);
+    setCameraError(null);
     setIsStreaming(true);
     setSessionStats({
       totalReps: 0,
@@ -269,35 +353,137 @@ export default function CoachPage() {
       duration: 0,
     });
 
-    // 1. Init MediaPipe (lazy, singleton)
-    await initMediaPipe();
+    try {
+      // 1. Init MediaPipe (lazy, singleton)
+      await initMediaPipe();
 
-    // 2. Start camera
-    await startCamera();
+      // 2. Start live camera input
+      await startCamera();
+    } catch {
+      setIsStreaming(false);
+      stopCamera();
+      showToast('Unable to start analysis session', 'error');
+    }
+  }, [
+    exerciseMode,
+    isPreparingUploadVideo,
+    uploadedVideoUrl,
+    showToast,
+    initMediaPipe,
+    startCamera,
+    stopCamera,
+  ]);
 
-    // 3. Connect WebSocket
-    wsConnect();
-  }, [initMediaPipe, startCamera, wsConnect]);
+  const handleUploadVideoPlay = useCallback(async () => {
+    if (exerciseMode !== 'upload') return;
+    if (isStreaming || uploadPlayStartingRef.current) return;
+    if (isPreparingUploadVideo || !uploadedVideoUrl) return;
+
+    uploadPlayStartingRef.current = true;
+    setCameraError(null);
+    setFormResponse(null);
+    setCurrentLandmarks([]);
+    setSessionStats({
+      totalReps: 0,
+      validReps: 0,
+      startTime: Date.now(),
+      duration: 0,
+    });
+    setIsStreaming(true);
+
+    try {
+      await initMediaPipe();
+      setCameraReady(true);
+    } catch {
+      setIsStreaming(false);
+      showToast('Unable to start analysis session', 'error');
+    } finally {
+      uploadPlayStartingRef.current = false;
+    }
+  }, [
+    exerciseMode,
+    isStreaming,
+    isPreparingUploadVideo,
+    uploadedVideoUrl,
+    initMediaPipe,
+    showToast,
+  ]);
+
+  const handleUploadVideoPause = useCallback(() => {
+    if (exerciseMode !== 'upload') return;
+    if (uploadPlayStartingRef.current) return;
+
+    setIsStreaming(false);
+    setCurrentLandmarks([]);
+  }, [exerciseMode]);
+
+  const handleUploadVideoEnded = useCallback(() => {
+    if (exerciseMode !== 'upload') return;
+
+    setIsStreaming(false);
+    setCurrentLandmarks([]);
+    showToast('Uploaded video analysis complete', 'success');
+  }, [exerciseMode, showToast]);
 
   const handleStopSession = useCallback(() => {
     setIsStreaming(false);
+    setCurrentLandmarks([]);
     stopCamera();
     wsDisconnect();
   }, [stopCamera, wsDisconnect]);
 
+  const handleModeChange = useCallback(
+    (nextMode: 'live' | 'upload') => {
+      if (nextMode === exerciseMode) return;
+
+      if (isStreaming) {
+        handleStopSession();
+      } else {
+        stopCamera();
+      }
+
+      setCurrentLandmarks([]);
+      setFormResponse(null);
+      setExerciseMode(nextMode);
+    },
+    [exerciseMode, isStreaming, handleStopSession, stopCamera]
+  );
+
   const handleReset = useCallback(async () => {
     await resetSession();
-    setFeedback(null);
+    setCurrentLandmarks([]);
+    setFormResponse(null);
     setSessionStats({ totalReps: 0, validReps: 0, startTime: 0, duration: 0 });
     showToast('Session reset', 'info');
   }, [resetSession, showToast]);
 
+  useEffect(() => {
+    if (isStreaming && cameraReady && mediapipeReady) {
+      wsConnect();
+      return;
+    }
+
+    wsDisconnect();
+  }, [isStreaming, cameraReady, mediapipeReady, wsConnect, wsDisconnect]);
+
+  useEffect(() => {
+    if (!isStreaming || currentLandmarks.length !== 33) {
+      return;
+    }
+
+    sendLandmarks(currentLandmarks, lastFrameTimestampRef.current);
+  }, [isStreaming, currentLandmarks, sendLandmarks]);
+
+  useEffect(() => {
+    jointColorsRef.current = formResponse?.joint_colors ?? {};
+  }, [formResponse?.joint_colors]);
+
   /* --------------------------------------------------------------- */
-  /*  Start detection loop once camera + mediapipe + ws are ready     */
+  /*  Start detection loop once camera + mediapipe are ready           */
   /* --------------------------------------------------------------- */
 
   useEffect(() => {
-    if (isStreaming && cameraReady && mediapipeReady && isConnected) {
+    if (isStreaming && cameraReady && mediapipeReady) {
       animFrameRef.current = requestAnimationFrame(processFrame);
     }
     return () => {
@@ -306,7 +492,7 @@ export default function CoachPage() {
         animFrameRef.current = null;
       }
     };
-  }, [isStreaming, cameraReady, mediapipeReady, isConnected, processFrame]);
+  }, [isStreaming, cameraReady, mediapipeReady, processFrame]);
 
   /* --------------------------------------------------------------- */
   /*  Fullscreen                                                      */
@@ -314,13 +500,40 @@ export default function CoachPage() {
 
   const toggleFullscreen = async () => {
     if (!containerRef.current) return;
+
+    type WebkitDocument = Document & {
+      webkitFullscreenElement?: Element | null;
+      webkitExitFullscreen?: () => Promise<void> | void;
+    };
+
+    type WebkitElement = HTMLElement & {
+      webkitRequestFullscreen?: () => Promise<void> | void;
+    };
+
+    const fullscreenElement =
+      document.fullscreenElement ??
+      (document as WebkitDocument).webkitFullscreenElement ??
+      null;
+
     try {
-      if (!document.fullscreenElement) {
-        await containerRef.current.requestFullscreen();
-        setIsFullscreen(true);
+      if (!fullscreenElement) {
+        const target = containerRef.current as WebkitElement;
+        if (target.requestFullscreen) {
+          await target.requestFullscreen();
+        } else if (target.webkitRequestFullscreen) {
+          await target.webkitRequestFullscreen();
+        } else {
+          throw new Error('Fullscreen API unavailable');
+        }
       } else {
-        await document.exitFullscreen();
-        setIsFullscreen(false);
+        const webkitDocument = document as WebkitDocument;
+        if (document.exitFullscreen) {
+          await document.exitFullscreen();
+        } else if (webkitDocument.webkitExitFullscreen) {
+          await webkitDocument.webkitExitFullscreen();
+        } else {
+          throw new Error('Fullscreen exit API unavailable');
+        }
       }
     } catch {
       showToast('Fullscreen not supported', 'warning');
@@ -328,9 +541,26 @@ export default function CoachPage() {
   };
 
   useEffect(() => {
-    const handleChange = () => setIsFullscreen(!!document.fullscreenElement);
+    type WebkitDocument = Document & {
+      webkitFullscreenElement?: Element | null;
+    };
+
+    const handleChange = () => {
+      const fullScreenElement =
+        document.fullscreenElement ??
+        (document as WebkitDocument).webkitFullscreenElement ??
+        null;
+      setIsFullscreen(!!fullScreenElement);
+    };
+
+    handleChange();
     document.addEventListener('fullscreenchange', handleChange);
-    return () => document.removeEventListener('fullscreenchange', handleChange);
+    document.addEventListener('webkitfullscreenchange', handleChange);
+
+    return () => {
+      document.removeEventListener('fullscreenchange', handleChange);
+      document.removeEventListener('webkitfullscreenchange', handleChange);
+    };
   }, []);
 
   /* --------------------------------------------------------------- */
@@ -348,6 +578,41 @@ export default function CoachPage() {
     return () => clearInterval(interval);
   }, [isStreaming]);
 
+  useEffect(() => {
+    if (exerciseMode !== 'upload' || !uploadedVideoUrl) return;
+    const video = videoRef.current;
+    if (!video) return;
+
+    if (video.readyState >= 1) {
+      setIsPreparingUploadVideo(false);
+      setCameraError(null);
+    }
+
+    const onLoadedMetadata = () => {
+      setIsPreparingUploadVideo(false);
+      setCameraError(null);
+    };
+
+    const onCanPlay = () => {
+      setIsPreparingUploadVideo(false);
+    };
+
+    const onError = () => {
+      setIsPreparingUploadVideo(false);
+      setCameraError('Unable to load the uploaded video. Please try another file.');
+    };
+
+    video.addEventListener('loadedmetadata', onLoadedMetadata);
+    video.addEventListener('canplay', onCanPlay);
+    video.addEventListener('error', onError);
+
+    return () => {
+      video.removeEventListener('loadedmetadata', onLoadedMetadata);
+      video.removeEventListener('canplay', onCanPlay);
+      video.removeEventListener('error', onError);
+    };
+  }, [exerciseMode, uploadedVideoUrl]);
+
   /* --------------------------------------------------------------- */
   /*  Cleanup on unmount                                              */
   /* --------------------------------------------------------------- */
@@ -356,9 +621,13 @@ export default function CoachPage() {
     return () => {
       stopCamera();
       wsDisconnect();
+
+      if (uploadObjectUrlRef.current) {
+        URL.revokeObjectURL(uploadObjectUrlRef.current);
+        uploadObjectUrlRef.current = null;
+      }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [stopCamera, wsDisconnect]);
 
   /* --------------------------------------------------------------- */
   /*  File upload handler                                             */
@@ -367,11 +636,17 @@ export default function CoachPage() {
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
-      if (file) {
-        uploadVideo(file);
+      e.target.value = '';
+      if (!file) return;
+
+      if (isStreaming) {
+        handleStopSession();
       }
+
+      loadUploadedFile(file);
+      showToast(`Loaded video: ${file.name}`, 'success');
     },
-    [uploadVideo]
+    [isStreaming, handleStopSession, loadUploadedFile, showToast]
   );
 
   /* --------------------------------------------------------------- */
@@ -392,128 +667,26 @@ export default function CoachPage() {
   const isInitializing =
     isStreaming && (!cameraReady || mediapipeLoading || isConnecting);
 
-  /* ================================================================ */
-  /*  RENDER — Fullscreen                                             */
-  /* ================================================================ */
-
-  if (isFullscreen) {
-    return (
-      <div ref={containerRef} className="relative h-screen w-screen bg-black">
-        {/* Camera */}
-        <div className="absolute inset-0">
-          <video
-            ref={videoRef}
-            autoPlay
-            playsInline
-            muted
-            className="h-full w-full object-cover"
-          />
-          <canvas
-            ref={overlayCanvasRef}
-            className="pointer-events-none absolute inset-0 h-full w-full object-cover"
-          />
-        </div>
-
-        {/* Top status bar */}
-        <div className="absolute top-0 left-0 right-0 z-10 flex items-center justify-between px-4 py-3 bg-gradient-to-b from-black/60 to-transparent">
-          <div className="flex items-center gap-2">
-            <div
-              className={`h-2 w-2 rounded-full ${isConnected ? 'bg-green-400' : 'bg-red-400'}`}
-            />
-            <span className="text-xs font-medium text-white/80">
-              {isConnected ? 'Connected' : 'Disconnected'}
-            </span>
-          </div>
-          {isStreaming && (
-            <div className="flex items-center gap-1.5 rounded-full bg-red-500/90 px-3 py-1">
-              <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
-              <span className="text-xs font-semibold text-white">
-                {formatTime(sessionStats.duration)}
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Bottom overlay */}
-        <div className="absolute bottom-0 left-0 right-0 z-10 bg-gradient-to-t from-black/70 to-transparent pb-6 pt-12">
-          {feedback?.correction_message && (
-            <div className="mx-4 mb-4 rounded-xl bg-white/10 px-4 py-2.5 backdrop-blur-md">
-              <p className="text-center text-sm text-white">
-                {feedback.correction_message}
-              </p>
-            </div>
-          )}
-
-          {feedback && (
-            <div className="mx-4 mb-4 flex justify-center gap-6">
-              <div className="text-center">
-                <p className="text-2xl font-bold text-white">
-                  {feedback.rep_count}
-                </p>
-                <p className="text-[10px] uppercase tracking-wider text-white/60">
-                  Reps
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-white">
-                  {accuracyPercent}%
-                </p>
-                <p className="text-[10px] uppercase tracking-wider text-white/60">
-                  Accuracy
-                </p>
-              </div>
-              <div className="text-center">
-                <p className="text-2xl font-bold text-white">
-                  {(feedback.confidence * 100).toFixed(0)}%
-                </p>
-                <p className="text-[10px] uppercase tracking-wider text-white/60">
-                  Confidence
-                </p>
-              </div>
-            </div>
-          )}
-
-          <div className="flex items-center justify-center gap-4">
-            <button
-              onClick={handleReset}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 backdrop-blur-md transition-colors hover:bg-white/25"
-              title="Reset"
-              aria-label="Reset session"
-            >
-              <RotateCcw className="h-5 w-5 text-white" />
-            </button>
-            <button
-              onClick={isStreaming ? handleStopSession : handleStartSession}
-              className={`flex h-16 w-16 items-center justify-center rounded-full transition-all active:scale-95 ${
-                isStreaming
-                  ? 'bg-red-500 hover:bg-red-600'
-                  : 'bg-white hover:bg-zinc-200'
-              }`}
-              aria-label={isStreaming ? 'Stop session' : 'Start session'}
-            >
-              {isStreaming ? (
-                <Square className="h-6 w-6 text-white" />
-              ) : (
-                <Play className="h-6 w-6 text-black ml-0.5" />
-              )}
-            </button>
-            <button
-              onClick={toggleFullscreen}
-              className="flex h-11 w-11 items-center justify-center rounded-full bg-white/15 backdrop-blur-md transition-colors hover:bg-white/25"
-              title="Exit fullscreen"
-              aria-label="Exit fullscreen"
-            >
-              <Minimize className="h-5 w-5 text-white" />
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const isStartDisabled =
+    !isStreaming &&
+    exerciseMode === 'upload' &&
+    (!uploadedVideoUrl || isPreparingUploadVideo);
 
   /* ================================================================ */
   /*  RENDER — Normal layout                                          */
   /* ================================================================ */
+
+  const playerContainerClass = isFullscreen
+    ? 'relative h-screen w-screen overflow-hidden bg-black'
+    : 'relative overflow-hidden rounded-2xl border border-zinc-200 bg-black shadow-sm dark:border-zinc-800';
+
+  const playerSurfaceClass = isFullscreen
+    ? 'relative h-full w-full'
+    : 'relative aspect-[4/3] w-full sm:aspect-video';
+
+  const playerPlaceholderClass = isFullscreen
+    ? 'flex h-full w-full flex-col items-center justify-center p-6 relative overflow-hidden'
+    : 'flex aspect-[4/3] w-full flex-col items-center justify-center p-6 sm:aspect-video relative overflow-hidden';
 
   return (
     <AppLayout title="AI Form Coach">
@@ -541,7 +714,7 @@ export default function CoachPage() {
         {/* Mode toggle */}
         <div className="flex gap-2">
           <button
-            onClick={() => setExerciseMode('live')}
+            onClick={() => handleModeChange('live')}
             className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-all ${
               exerciseMode === 'live'
                 ? 'bg-[color:var(--foreground)] text-[color:var(--background)]'
@@ -552,7 +725,7 @@ export default function CoachPage() {
             Live
           </button>
           <button
-            onClick={() => setExerciseMode('upload')}
+            onClick={() => handleModeChange('upload')}
             className={`flex flex-1 items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-medium transition-all ${
               exerciseMode === 'upload'
                 ? 'bg-[color:var(--foreground)] text-[color:var(--background)]'
@@ -567,23 +740,23 @@ export default function CoachPage() {
         {/* Camera / Upload area */}
         <div
           ref={containerRef}
-          className="relative overflow-hidden rounded-2xl border border-zinc-200 bg-black shadow-sm dark:border-zinc-800"
+          className={playerContainerClass}
         >
           {exerciseMode === 'live' && isStreaming ? (
-            <div className="relative aspect-[4/3] w-full sm:aspect-video">
+            <div className={playerSurfaceClass}>
               {/* Native video element */}
               <video
                 ref={videoRef}
                 autoPlay
                 playsInline
                 muted
-                className="h-full w-full object-cover"
+                className="h-full w-full object-contain"
               />
 
               {/* Skeleton overlay canvas */}
               <canvas
                 ref={overlayCanvasRef}
-                className="pointer-events-none absolute inset-0 h-full w-full object-cover"
+                className="pointer-events-none absolute inset-0 h-full w-full object-contain"
               />
 
               {/* Initializing indicator */}
@@ -612,7 +785,7 @@ export default function CoachPage() {
             </div>
           ) : exerciseMode === 'live' && !isStreaming ? (
             /* Placeholder / How it works */
-            <div className="flex aspect-[4/3] w-full flex-col items-center justify-center p-6 sm:aspect-video relative overflow-hidden">
+            <div className={playerPlaceholderClass}>
               <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 to-purple-900/20" />
               <div className="z-10 flex flex-col items-center max-w-md w-full gap-4 text-center">
                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 shadow-lg backdrop-blur-md mb-2">
@@ -648,33 +821,79 @@ export default function CoachPage() {
                 </div>
               </div>
             </div>
+          ) : exerciseMode === 'upload' && uploadedVideoUrl ? (
+            <div className={playerSurfaceClass}>
+              <video
+                ref={videoRef}
+                src={uploadedVideoUrl}
+                controls
+                playsInline
+                muted
+                crossOrigin="anonymous"
+                onPlay={() => {
+                  void handleUploadVideoPlay();
+                }}
+                onPause={handleUploadVideoPause}
+                onEnded={handleUploadVideoEnded}
+                className="h-full w-full object-contain"
+              />
+
+              <canvas
+                ref={overlayCanvasRef}
+                className="pointer-events-none absolute inset-0 h-full w-full object-contain"
+              />
+
+              {isInitializing && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50">
+                  <Loader className="h-8 w-8 animate-spin text-white" />
+                  <p className="text-sm text-white/80">
+                    {mediapipeLoading ? 'Loading pose model…' : 'Connecting…'}
+                  </p>
+                </div>
+              )}
+
+              {cameraError && !isStreaming && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/70 p-4">
+                  <AlertCircle className="h-10 w-10 text-red-400" />
+                  <p className="max-w-xs text-center text-sm text-red-200">
+                    {cameraError}
+                  </p>
+                </div>
+              )}
+
+              {!isStreaming && uploadedFilename && (
+                <div className="absolute left-3 top-3 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm">
+                  <p className="text-[10px] font-medium text-white/80">
+                    {uploadedFilename}
+                  </p>
+                </div>
+              )}
+            </div>
           ) : (
             /* Upload mode */
-            <div className="flex aspect-[4/3] w-full flex-col items-center justify-center gap-4 sm:aspect-video">
+            <div className={`${playerPlaceholderClass} gap-4`}>
               <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white/10">
                 <Upload className="h-6 w-6 text-white/60" />
               </div>
               <div className="text-center">
                 <p className="text-sm font-medium text-white/80">
-                  Upload a video
+                  {isPreparingUploadVideo
+                    ? 'Preparing uploaded video'
+                    : 'Upload a video'}
                 </p>
                 <p className="text-xs text-white/40 mt-1">
-                  MP4, MOV supported
+                  {isPreparingUploadVideo
+                    ? 'Loading video into the player...'
+                    : 'Press the video play button to start AI analysis'}
                 </p>
               </div>
 
-              {/* Upload progress bar */}
-              {isUploading && (
-                <div className="mx-6 w-full max-w-xs">
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-white/10">
-                    <div
-                      className="h-full rounded-full bg-blue-500 transition-all"
-                      style={{ width: `${uploadProgress.progress}%` }}
-                    />
-                  </div>
-                  <p className="mt-1 text-center text-xs text-white/50">
-                    {uploadProgress.progress}%
-                  </p>
+              {isPreparingUploadVideo && (
+                <div className="flex items-center gap-2 rounded-full bg-white/10 px-3 py-1.5">
+                  <Loader className="h-3.5 w-3.5 animate-spin text-white/80" />
+                  <span className="text-xs text-white/80">
+                    Almost ready...
+                  </span>
                 </div>
               )}
 
@@ -684,12 +903,17 @@ export default function CoachPage() {
                 className="hidden"
                 id="video-upload"
                 onChange={handleFileSelect}
+                disabled={isPreparingUploadVideo}
               />
               <label
                 htmlFor="video-upload"
-                className="cursor-pointer rounded-xl bg-white/10 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-white/20"
+                className={`rounded-xl bg-white/10 px-5 py-2 text-sm font-medium text-white transition-colors ${
+                  isPreparingUploadVideo
+                    ? 'cursor-not-allowed opacity-60'
+                    : 'cursor-pointer hover:bg-white/20'
+                }`}
               >
-                {isUploading ? 'Uploading…' : 'Choose File'}
+                {isPreparingUploadVideo ? 'Preparing…' : 'Choose File'}
               </label>
             </div>
           )}
@@ -705,10 +929,10 @@ export default function CoachPage() {
           )}
 
           {/* Feedback overlay on camera */}
-          {feedback?.correction_message && isStreaming && (
+          {formResponse?.correction_message && isStreaming && (
             <div className="absolute bottom-3 left-3 right-3 rounded-xl bg-black/60 px-3 py-2 backdrop-blur-sm">
               <p className="text-center text-xs text-white sm:text-sm">
-                {feedback.correction_message}
+                {formResponse.correction_message}
               </p>
             </div>
           )}
@@ -726,7 +950,9 @@ export default function CoachPage() {
                   // Restart camera with new facing mode
                   stopCamera();
                   // startCamera will use the updated facingMode after re-render
-                  setTimeout(() => startCamera(), 100);
+                  setTimeout(() => {
+                    void startCamera();
+                  }, 100);
                 }
               }}
               className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)] dark:border-zinc-800"
@@ -739,7 +965,7 @@ export default function CoachPage() {
 
           <button
             onClick={handleReset}
-            disabled={!feedback && sessionStats.totalReps === 0}
+            disabled={!formResponse && sessionStats.totalReps === 0}
             className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)] disabled:opacity-30 dark:border-zinc-800"
             title="Reset session"
             aria-label="Reset session"
@@ -749,10 +975,11 @@ export default function CoachPage() {
 
           <button
             onClick={isStreaming ? handleStopSession : handleStartSession}
+            disabled={isStartDisabled}
             className={`flex h-14 w-14 items-center justify-center rounded-2xl text-white transition-all active:scale-95 ${
               isStreaming
                 ? 'bg-red-500 hover:bg-red-600'
-                : 'bg-[color:var(--foreground)] hover:opacity-90'
+                : 'bg-[color:var(--foreground)] hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40'
             }`}
             title={isStreaming ? 'Stop' : 'Start'}
             aria-label={isStreaming ? 'Stop session' : 'Start session'}
@@ -767,88 +994,28 @@ export default function CoachPage() {
           <button
             onClick={toggleFullscreen}
             className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)] dark:border-zinc-800"
-            title="Fullscreen"
+            title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
             aria-label="Toggle fullscreen"
           >
-            <Maximize className="h-5 w-5" />
+            {isFullscreen ? (
+              <Minimize className="h-5 w-5" />
+            ) : (
+              <Maximize className="h-5 w-5" />
+            )}
           </button>
         </div>
 
-        {/* Stats cards */}
-        {feedback && (
-          <div className="grid grid-cols-4 gap-2 sm:gap-3">
-            <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
-              <Target className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
-              <p className="text-lg font-bold text-[color:var(--foreground)]">
-                {feedback.rep_count}
-              </p>
-              <p className="text-[10px] text-[color:var(--muted-foreground)]">
-                Reps
-              </p>
-            </div>
-            <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
-              <TrendingUp className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
-              <p className="text-lg font-bold text-[color:var(--foreground)]">
-                {accuracyPercent}%
-              </p>
-              <p className="text-[10px] text-[color:var(--muted-foreground)]">
-                Accuracy
-              </p>
-            </div>
-            <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
-              <Timer className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
-              <p className="text-lg font-bold text-[color:var(--foreground)]">
-                {formatTime(sessionStats.duration)}
-              </p>
-              <p className="text-[10px] text-[color:var(--muted-foreground)]">
-                Time
-              </p>
-            </div>
-            <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
-              <Wifi className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
-              <p className="text-lg font-bold text-[color:var(--foreground)]">
-                {(feedback.confidence * 100).toFixed(0)}%
-              </p>
-              <p className="text-[10px] text-[color:var(--muted-foreground)]">
-                Confidence
-              </p>
-            </div>
-          </div>
-        )}
-
-        {/* Exercise detected */}
-        {feedback?.exercise_display && (
-          <div className="flex items-center justify-center rounded-xl border border-zinc-200 py-3 dark:border-zinc-800">
-            <p className="text-sm font-medium text-[color:var(--foreground)]">
-              {feedback.exercise_display}
-            </p>
-          </div>
-        )}
-
-        {/* Violations */}
-        {feedback && feedback.violations.length > 0 && (
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-950/20">
-            <div className="flex items-center gap-2 mb-2">
-              <AlertTriangle className="h-4 w-4 text-red-500" />
-              <p className="text-sm font-medium text-red-700 dark:text-red-400">
-                Form Issues
-              </p>
-            </div>
-            <ul className="space-y-1">
-              {feedback.violations.map((v, i) => (
-                <li
-                  key={i}
-                  className="text-xs text-red-600 dark:text-red-300"
-                >
-                  • {v}
-                </li>
-              ))}
-            </ul>
-          </div>
+        {/* Exercise feedback */}
+        {formResponse && (
+          <ExerciseDisplay
+            formResponse={formResponse}
+            accuracyPercent={accuracyPercent}
+            elapsedTime={formatTime(sessionStats.duration)}
+          />
         )}
 
         {/* Empty state */}
-        {!feedback && !isStreaming && (
+        {!formResponse && !isStreaming && (
           <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-200 py-10 dark:border-zinc-800">
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-100 dark:bg-zinc-900">
               <Play className="h-5 w-5 text-[color:var(--muted-foreground)] ml-0.5" />
@@ -863,7 +1030,7 @@ export default function CoachPage() {
         )}
 
         {/* Detecting state */}
-        {!feedback && isStreaming && !isInitializing && (
+        {!formResponse && isStreaming && !isInitializing && (
           <div className="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 py-4 dark:border-zinc-800">
             <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
             <p className="text-sm text-[color:var(--muted-foreground)]">
@@ -873,6 +1040,117 @@ export default function CoachPage() {
         )}
       </section>
     </AppLayout>
+  );
+}
+
+interface ExerciseDisplayProps {
+  formResponse: FormCorrectionResponse;
+  accuracyPercent: number;
+  elapsedTime: string;
+}
+
+function ExerciseDisplay({
+  formResponse,
+  accuracyPercent,
+  elapsedTime,
+}: ExerciseDisplayProps) {
+  const hasViolations = formResponse.violations.length > 0;
+  const hasCorrections = formResponse.corrections.length > 0;
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-4 gap-2 sm:gap-3">
+        <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
+          <Target className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
+          <p className="text-lg font-bold text-[color:var(--foreground)]">
+            {formResponse.rep_count}
+          </p>
+          <p className="text-[10px] text-[color:var(--muted-foreground)]">
+            Reps
+          </p>
+        </div>
+        <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
+          <TrendingUp className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
+          <p className="text-lg font-bold text-[color:var(--foreground)]">
+            {accuracyPercent}%
+          </p>
+          <p className="text-[10px] text-[color:var(--muted-foreground)]">
+            Accuracy
+          </p>
+        </div>
+        <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
+          <Timer className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
+          <p className="text-lg font-bold text-[color:var(--foreground)]">
+            {elapsedTime}
+          </p>
+          <p className="text-[10px] text-[color:var(--muted-foreground)]">
+            Time
+          </p>
+        </div>
+        <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
+          <Wifi className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
+          <p className="text-lg font-bold text-[color:var(--foreground)]">
+            {(formResponse.confidence * 100).toFixed(0)}%
+          </p>
+          <p className="text-[10px] text-[color:var(--muted-foreground)]">
+            Confidence
+          </p>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 dark:border-zinc-800">
+        <p className="text-xs uppercase tracking-wide text-[color:var(--muted-foreground)]">
+          Exercise
+        </p>
+        <p className="mt-1 text-sm font-medium text-[color:var(--foreground)]">
+          {formResponse.exercise_display || formResponse.current_exercise || 'Detecting'}
+        </p>
+        <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[color:var(--muted-foreground)]">
+          <span className="rounded-full bg-zinc-100 px-2 py-1 dark:bg-zinc-900">
+            State: {formResponse.state}
+          </span>
+          <span className="rounded-full bg-zinc-100 px-2 py-1 dark:bg-zinc-900">
+            Phase: {formResponse.rep_phase || 'N/A'}
+          </span>
+        </div>
+      </div>
+
+      {hasViolations && (
+        <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-950/20">
+          <div className="mb-2 flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-red-500" />
+            <p className="text-sm font-medium text-red-700 dark:text-red-400">
+              Violations
+            </p>
+          </div>
+          <ul className="space-y-1">
+            {formResponse.violations.map((violation, idx) => (
+              <li key={`violation-${idx}`} className="text-xs text-red-600 dark:text-red-300">
+                • {violation}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {hasCorrections && (
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
+          <p className="mb-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
+            Corrections
+          </p>
+          <ul className="space-y-1">
+            {formResponse.corrections.map((correction, idx) => (
+              <li
+                key={`correction-${idx}`}
+                className="text-xs text-emerald-700 dark:text-emerald-200"
+              >
+                • {correction}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -914,7 +1192,12 @@ function drawSkeleton(
     for (let i = 0; i < chain.length - 1; i++) {
       const from = landmarks[chain[i]];
       const to = landmarks[chain[i + 1]];
-      if (from && to && from.visibility > 0.5 && to.visibility > 0.5) {
+      if (
+        from &&
+        to &&
+        from.visibility > MIN_DRAW_VISIBILITY &&
+        to.visibility > MIN_DRAW_VISIBILITY
+      ) {
         // Use joint color if available, default green
         const key = JOINT_NAMES[chain[i]] || JOINT_NAMES[chain[i + 1]];
         ctx.strokeStyle =
@@ -929,7 +1212,7 @@ function drawSkeleton(
 
   // Draw joints
   landmarks.forEach((lm, idx) => {
-    if (lm.visibility > 0.5) {
+    if (lm.visibility > MIN_DRAW_VISIBILITY) {
       const key = JOINT_NAMES[idx];
       const color = (key && jointColors[key]) || '#22c55e';
       ctx.fillStyle = color;

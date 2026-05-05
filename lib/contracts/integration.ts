@@ -5,6 +5,21 @@ export interface PoseLandmark {
   visibility: number;
 }
 
+export interface JointAngle {
+  name: string;
+  angle: number;
+  status: 'good' | 'warning' | 'poor';
+}
+
+export interface FormFeedback {
+  exercise: string;
+  overallScore: number;
+  angles: JointAngle[];
+  posture: string;
+  suggestions: string[];
+  timestamp: number;
+}
+
 export interface WsPoseRequest {
   landmarks: PoseLandmark[];
   timestamp: number;

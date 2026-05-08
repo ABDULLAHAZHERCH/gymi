@@ -1,6 +1,6 @@
 'use client';
 
-import { Dumbbell, Edit2, Trash2 } from 'lucide-react';
+import { Dumbbell, Edit2, Trash2, Activity } from 'lucide-react';
 import { Workout } from '@/lib/types/firestore';
 import { useUnits } from '@/components/providers/UnitProvider';
 import { displayWeight } from '@/lib/utils/units';
@@ -32,7 +32,15 @@ export default function WorkoutCard({ workout, onEdit, onDelete }: WorkoutCardPr
             <Dumbbell className="h-5 w-5 text-[color:var(--foreground)]" />
           </div>
           <div className="space-y-1">
-            <h3 className="font-semibold text-[color:var(--foreground)]">{workout.exercise}</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="font-semibold text-[color:var(--foreground)]">{workout.exercise}</h3>
+              {workout.source === 'coach' && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                  <Activity className="h-3 w-3" />
+                  AI Coach
+                </span>
+              )}
+            </div>
             <p className="text-sm text-[color:var(--muted-foreground)]">
               {workout.sets} sets × {workout.reps} reps
               {workout.weight > 0 && ` • ${displayWeight(workout.weight, unitSystem)}`}

@@ -18,6 +18,8 @@ import {
   Loader,
   AlertCircle,
   Activity,
+  Save,
+  Pause,
 } from 'lucide-react';
 import {
   usePoseWebSocket,
@@ -33,6 +35,8 @@ import {
   extractLandmarks,
   resetPoseLandmarker,
 } from '@/lib/mediapipe';
+import { saveCoachSession } from '@/lib/coachSessions';
+import type { CoachRepDetail } from '@/lib/contracts/integration';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -119,6 +123,15 @@ export default function CoachPage() {
   const jointColorsRef = useRef<Record<string, string>>({});
   const uploadPlayStartingRef = useRef(false);
 
+  // Per-rep aggregation buffers (refs to avoid 20fps state churn)
+  const repBreakdownRef = useRef<CoachRepDetail[]>([]);
+  const violationCountsRef = useRef<Record<string, number>>({});
+  const confidenceSumRef = useRef(0);
+  const confidenceFramesRef = useRef(0);
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [connectingTooLong, setConnectingTooLong] = useState(false);
+
   // WebSocket hook
   const {
     isConnected,
@@ -132,15 +145,37 @@ export default function CoachPage() {
     enabled: false, // manual connect/disconnect
     onMessage: (response) => {
       setFormResponse(response);
+
+      // Track confidence across all frames
+      if (typeof response.confidence === 'number' && response.confidence > 0) {
+        confidenceSumRef.current += response.confidence;
+        confidenceFramesRef.current += 1;
+      }
+
+      // Track violation occurrences (frame-level approximation; aggregated per
+      // session, not per rep — gives us a good "what kept going wrong" view).
+      response.violations?.forEach((violation) => {
+        violationCountsRef.current[violation] =
+          (violationCountsRef.current[violation] ?? 0) + 1;
+      });
+
       setSessionStats((prev) => {
-        const next = { ...prev };
-        if (response.rep_count > next.totalReps) {
-          next.totalReps = response.rep_count;
-          if (response.is_rep_valid) {
-            next.validReps += 1;
-          }
+        if (response.rep_count > prev.totalReps) {
+          // Append per-rep detail for this newly-counted rep.
+          repBreakdownRef.current.push({
+            repNumber: response.rep_count,
+            isValid: response.is_rep_valid,
+            violations: [...(response.violations ?? [])],
+            confidence: response.confidence ?? 0,
+            timestamp: Date.now(),
+          });
+          return {
+            ...prev,
+            totalReps: response.rep_count,
+            validReps: response.is_rep_valid ? prev.validReps + 1 : prev.validReps,
+          };
         }
-        return next;
+        return prev;
       });
     },
     onConnect: () => showToast('Connected to form analysis', 'success'),
@@ -346,6 +381,10 @@ export default function CoachPage() {
     setCurrentLandmarks([]);
     setCameraError(null);
     setIsStreaming(true);
+    repBreakdownRef.current = [];
+    violationCountsRef.current = {};
+    confidenceSumRef.current = 0;
+    confidenceFramesRef.current = 0;
     setSessionStats({
       totalReps: 0,
       validReps: 0,
@@ -383,6 +422,10 @@ export default function CoachPage() {
     setCameraError(null);
     setFormResponse(null);
     setCurrentLandmarks([]);
+    repBreakdownRef.current = [];
+    violationCountsRef.current = {};
+    confidenceSumRef.current = 0;
+    confidenceFramesRef.current = 0;
     setSessionStats({
       totalReps: 0,
       validReps: 0,
@@ -453,9 +496,88 @@ export default function CoachPage() {
     await resetSession();
     setCurrentLandmarks([]);
     setFormResponse(null);
+    repBreakdownRef.current = [];
+    violationCountsRef.current = {};
+    confidenceSumRef.current = 0;
+    confidenceFramesRef.current = 0;
     setSessionStats({ totalReps: 0, validReps: 0, startTime: 0, duration: 0 });
     showToast('Session reset', 'info');
   }, [resetSession, showToast]);
+
+  const handleSaveSession = useCallback(async () => {
+    if (!user?.uid) {
+      showToast('Sign in to save coach sessions', 'warning');
+      return;
+    }
+    if (sessionStats.totalReps === 0) {
+      showToast('Complete at least one rep before saving', 'info');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const detectedExercise =
+        formResponse?.current_exercise ?? 'unknown_exercise';
+      const avgConfidence =
+        confidenceFramesRef.current > 0
+          ? confidenceSumRef.current / confidenceFramesRef.current
+          : 0;
+
+      await saveCoachSession(user.uid, {
+        detectedExercise,
+        totalReps: sessionStats.totalReps,
+        validReps: sessionStats.validReps,
+        duration: sessionStats.duration,
+        avgConfidence,
+        violationCounts: { ...violationCountsRef.current },
+        repBreakdown: [...repBreakdownRef.current],
+      });
+
+      showToast('Session saved to your workouts', 'success');
+
+      // After save, end the live session and clear local state.
+      if (isStreaming) {
+        setIsStreaming(false);
+        stopCamera();
+        wsDisconnect();
+      }
+      setCurrentLandmarks([]);
+      setFormResponse(null);
+      repBreakdownRef.current = [];
+      violationCountsRef.current = {};
+      confidenceSumRef.current = 0;
+      confidenceFramesRef.current = 0;
+      setSessionStats({ totalReps: 0, validReps: 0, startTime: 0, duration: 0 });
+    } catch (err) {
+      const message =
+        err instanceof Error ? err.message : 'Failed to save session';
+      showToast(message, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  }, [
+    user?.uid,
+    sessionStats.totalReps,
+    sessionStats.validReps,
+    sessionStats.duration,
+    formResponse?.current_exercise,
+    isStreaming,
+    showToast,
+    stopCamera,
+    wsDisconnect,
+  ]);
+
+  // Cold-start UX: Render's free tier sleeps after ~15min idle. The first
+  // connection can take 30-60s; surface that to the user instead of leaving
+  // them watching a silent spinner.
+  useEffect(() => {
+    if (!isConnecting) {
+      setConnectingTooLong(false);
+      return;
+    }
+    const t = setTimeout(() => setConnectingTooLong(true), 5000);
+    return () => clearTimeout(t);
+  }, [isConnecting]);
 
   useEffect(() => {
     if (isStreaming && cameraReady && mediapipeReady) {
@@ -761,14 +883,16 @@ export default function CoachPage() {
 
               {/* Initializing indicator */}
               {isInitializing && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50 px-4">
                   <Loader className="h-8 w-8 animate-spin text-white" />
-                  <p className="text-sm text-white/80">
+                  <p className="text-sm text-white/80 text-center">
                     {mediapipeLoading
                       ? 'Loading pose model…'
                       : !cameraReady
                         ? 'Starting camera…'
-                        : 'Connecting…'}
+                        : connectingTooLong
+                          ? 'Waking up the coach — first start can take up to a minute…'
+                          : 'Connecting…'}
                   </p>
                 </div>
               )}
@@ -844,10 +968,14 @@ export default function CoachPage() {
               />
 
               {isInitializing && (
-                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50">
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/50 px-4">
                   <Loader className="h-8 w-8 animate-spin text-white" />
-                  <p className="text-sm text-white/80">
-                    {mediapipeLoading ? 'Loading pose model…' : 'Connecting…'}
+                  <p className="text-sm text-white/80 text-center">
+                    {mediapipeLoading
+                      ? 'Loading pose model…'
+                      : connectingTooLong
+                        ? 'Waking up the coach — first start can take up to a minute…'
+                        : 'Connecting…'}
                   </p>
                 </div>
               )}
@@ -992,6 +1120,21 @@ export default function CoachPage() {
           </button>
 
           <button
+            onClick={handleSaveSession}
+            disabled={sessionStats.totalReps === 0 || isSaving}
+            className="flex h-11 items-center justify-center gap-2 rounded-xl border border-emerald-300 bg-emerald-50 px-3 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 disabled:opacity-30 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+            title="End session and save"
+            aria-label="End session and save"
+          >
+            {isSaving ? (
+              <Loader className="h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4" />
+            )}
+            <span className="hidden sm:inline">Save</span>
+          </button>
+
+          <button
             onClick={toggleFullscreen}
             className="flex h-11 w-11 items-center justify-center rounded-xl border border-zinc-200 text-[color:var(--muted-foreground)] transition-colors hover:text-[color:var(--foreground)] dark:border-zinc-800"
             title={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
@@ -1029,18 +1172,74 @@ export default function CoachPage() {
           </div>
         )}
 
-        {/* Detecting state */}
-        {!formResponse && isStreaming && !isInitializing && (
-          <div className="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 py-4 dark:border-zinc-800">
-            <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
-            <p className="text-sm text-[color:var(--muted-foreground)]">
-              Detecting exercise…
-            </p>
-          </div>
+        {/* Status banner — uses backend state to give clear UX cues */}
+        {isStreaming && !isInitializing && (
+          <StatusBanner formResponse={formResponse} />
         )}
       </section>
     </AppLayout>
   );
+}
+
+/**
+ * Renders the current pipeline state (idle/stationary/scanning/active) as a
+ * single explicit banner. Backed by the `state` field on the WS response;
+ * "stationary" is emitted when the body is motionless for ~1 second so the
+ * user gets clear UX feedback instead of guessing why nothing is counting.
+ */
+function StatusBanner({
+  formResponse,
+}: {
+  formResponse: FormCorrectionResponse | null;
+}) {
+  const state = formResponse?.state ?? 'scanning';
+
+  if (state === 'stationary') {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-amber-200 bg-amber-50 py-4 dark:border-amber-900/50 dark:bg-amber-950/20">
+        <Pause className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+        <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
+          Hold still — start your reps when ready
+        </p>
+      </div>
+    );
+  }
+
+  if (state === 'idle') {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 py-4 dark:border-zinc-800">
+        <div className="h-2 w-2 rounded-full bg-zinc-400" />
+        <p className="text-sm text-[color:var(--muted-foreground)]">
+          Step into frame so we can see you
+        </p>
+      </div>
+    );
+  }
+
+  if (state === 'scanning' || !formResponse) {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-zinc-200 py-4 dark:border-zinc-800">
+        <div className="h-2 w-2 animate-pulse rounded-full bg-blue-500" />
+        <p className="text-sm text-[color:var(--muted-foreground)]">
+          Detecting exercise…
+        </p>
+      </div>
+    );
+  }
+
+  // state === 'active'
+  if (formResponse.is_rep_valid === false && formResponse.violations.length > 0) {
+    return (
+      <div className="flex items-center justify-center gap-2 rounded-xl border border-orange-200 bg-orange-50 py-4 dark:border-orange-900/50 dark:bg-orange-950/20">
+        <AlertTriangle className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+        <p className="text-sm font-medium text-orange-700 dark:text-orange-300">
+          Form needs adjustment
+        </p>
+      </div>
+    );
+  }
+
+  return null;
 }
 
 interface ExerciseDisplayProps {
@@ -1109,9 +1308,11 @@ function ExerciseDisplay({
           <span className="rounded-full bg-zinc-100 px-2 py-1 dark:bg-zinc-900">
             State: {formResponse.state}
           </span>
-          <span className="rounded-full bg-zinc-100 px-2 py-1 dark:bg-zinc-900">
-            Phase: {formResponse.rep_phase || 'N/A'}
-          </span>
+          {formResponse.phase_display && (
+            <span className="rounded-full bg-zinc-100 px-2 py-1 dark:bg-zinc-900">
+              {formResponse.phase_display}
+            </span>
+          )}
         </div>
       </div>
 

@@ -42,10 +42,38 @@ export interface Workout {
   programName?: string;
   programSessionName?: string;
 
+  // Optional AI Coach Linkage
+  source?: 'manual' | 'coach' | 'program';
+  coachSessionId?: string;
+
   // Metadata
   id: string;
   createdAt: Date;
   updatedAt: Date;
+}
+
+/** AI Coach Rep Detail */
+export interface CoachRepDetail {
+  repNumber: number;
+  isValid: boolean;
+  violations: string[];
+  confidence: number;
+  timestamp: number;
+}
+
+/** AI Coach Session - stored at /users/{uid}/coachSessions/{sessionId} */
+export interface CoachSession {
+  id: string;
+  detectedExercise: string;
+  totalReps: number;
+  validReps: number;
+  accuracy: number;
+  duration: number;
+  avgConfidence: number;
+  violationCounts: Record<string, number>;
+  repBreakdown: CoachRepDetail[];
+  date: Date;
+  createdAt: Date;
 }
 
 /** Meal Entry - stored at /users/{uid}/meals/{mealId} */

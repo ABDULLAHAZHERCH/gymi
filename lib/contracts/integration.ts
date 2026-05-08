@@ -25,19 +25,51 @@ export interface WsPoseRequest {
   timestamp: number;
 }
 
+export type SystemState = 'idle' | 'stationary' | 'scanning' | 'active';
+export type RepPhase = 'idle' | 'setup' | 'eccentric' | 'concentric' | 'hold';
+
 export interface WsFormCorrectionResponse {
-  state: 'idle' | 'scanning' | 'active';
+  state: SystemState;
   current_exercise: string | null;
   exercise_display: string;
   rep_count: number;
-  rep_phase: string;
+  rep_phase: RepPhase;
+  phase_display: string;
   is_rep_valid: boolean;
   violations: string[];
   corrections: string[];
   correction_message: string;
   joint_colors: Record<string, string>;
   confidence: number;
+  is_stationary: boolean;
   timestamp: number;
+  exercise_confidence?: number;
+  form_confidence?: number;
+  signal_quality?: string;
+  exercise_variant?: string | null;
+  exercise_source?: string;
+}
+
+export interface CoachRepDetail {
+  repNumber: number;
+  isValid: boolean;
+  violations: string[];
+  confidence: number;
+  timestamp: number;
+}
+
+export interface CoachSession {
+  id?: string;
+  detectedExercise: string;
+  totalReps: number;
+  validReps: number;
+  accuracy: number;
+  duration: number;
+  avgConfidence: number;
+  violationCounts: Record<string, number>;
+  repBreakdown: CoachRepDetail[];
+  date: Date;
+  createdAt?: Date;
 }
 
 export interface UploadInitRequest {

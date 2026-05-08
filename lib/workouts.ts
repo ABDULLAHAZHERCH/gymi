@@ -56,6 +56,8 @@ const convertTimestamps = (data: any): Omit<Workout, 'id'> => {
     programSessionId: data.programSessionId || undefined,
     programName: data.programName || undefined,
     programSessionName: data.programSessionName || undefined,
+    source: data.source || undefined,
+    coachSessionId: data.coachSessionId || undefined,
     createdAt: parseDate(data.createdAt),
     updatedAt: parseDate(data.updatedAt),
   };
@@ -86,6 +88,8 @@ export async function addWorkout(
       programSessionId: workoutData.programSessionId || null,
       programName: workoutData.programName || null,
       programSessionName: workoutData.programSessionName || null,
+      source: workoutData.source || 'manual',
+      coachSessionId: workoutData.coachSessionId || null,
       createdAt: Timestamp.fromDate(new Date()),
       updatedAt: Timestamp.fromDate(new Date()),
     });

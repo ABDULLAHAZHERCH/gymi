@@ -95,7 +95,7 @@ function summarizeWorkouts(workouts: WorkoutSummary[] = []): string {
 
 function summarizeMeals(meals: MealSummary[] = []): string {
   if (meals.length === 0) return 'No meals logged.';
-  const totals = meals.reduce(
+  const totals = meals.reduce<{ calories: number; protein: number; carbs: number; fat: number }>(
     (acc, m) => {
       acc.calories += m.calories ?? 0;
       acc.protein += m.protein ?? 0;

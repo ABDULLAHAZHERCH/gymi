@@ -94,7 +94,7 @@ export async function saveCoachSession(
       createdAt: Timestamp.fromDate(new Date()),
     });
 
-    cacheInvalidate(`coachSessions:${uid}`);
+    cacheInvalidate(`coachSessions:${uid}:`);
 
     // Cross-reference into workouts/ so the session appears in history.
     // addWorkout invalidates workout caches itself.
@@ -159,7 +159,7 @@ export async function deleteCoachSession(
   try {
     const ref = doc(db, 'users', uid, 'coachSessions', sessionId);
     await deleteDoc(ref);
-    cacheInvalidate(`coachSessions:${uid}`);
+    cacheInvalidate(`coachSessions:${uid}:`);
   } catch (error) {
     throw new Error(getErrorMessage(error, 'Failed to delete coach session'));
   }

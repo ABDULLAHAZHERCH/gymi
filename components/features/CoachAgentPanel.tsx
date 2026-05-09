@@ -227,13 +227,32 @@ export default function CoachAgentPanel({
 
     setAsking(true);
     try {
+      // Always fetch fresh data right before sending — the panel only loads
+      // context once on mount, so without this the agent would answer with
+      // stale snapshot from before the user saved their latest session.
+      let freshContext: AgentContext = activeContext;
+      if (uid) {
+        try {
+          const [sessions, workouts, meals, goals] = await Promise.all([
+            getCoachSessions(uid, 8),
+            getRecentWorkouts(uid, 8),
+            getMeals(uid, 12),
+            getActiveGoals(uid),
+          ]);
+          freshContext = { sessions, workouts, meals, goals };
+          setContext(freshContext);
+        } catch {
+          // Fall back to whatever we already have in state.
+        }
+      }
+
       const response = await fetch('/api/coach-agent', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           question,
           context: toAgentApiContext(
-            activeContext,
+            freshContext,
             liveExercise,
             liveViolations,
             liveCorrections

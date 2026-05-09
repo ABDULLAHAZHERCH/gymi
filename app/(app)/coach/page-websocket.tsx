@@ -20,6 +20,8 @@ import {
   Activity,
   Save,
   Pause,
+  RefreshCw,
+  X,
 } from 'lucide-react';
 import {
   usePoseWebSocket,
@@ -474,6 +476,34 @@ export default function CoachPage() {
     stopCamera();
     wsDisconnect();
   }, [stopCamera, wsDisconnect]);
+
+  const handleClearUpload = useCallback(() => {
+    if (isStreaming) {
+      handleStopSession();
+    }
+
+    if (videoRef.current) {
+      try {
+        videoRef.current.pause();
+      } catch {
+        /* ignore */
+      }
+      videoRef.current.removeAttribute('src');
+      videoRef.current.load();
+    }
+
+    if (uploadObjectUrlRef.current) {
+      URL.revokeObjectURL(uploadObjectUrlRef.current);
+      uploadObjectUrlRef.current = null;
+    }
+
+    setUploadedVideoUrl(null);
+    setUploadedFilename(null);
+    setIsPreparingUploadVideo(false);
+    setCurrentLandmarks([]);
+    setFormResponse(null);
+    uploadPlayStartingRef.current = false;
+  }, [isStreaming, handleStopSession]);
 
   const handleModeChange = useCallback(
     (nextMode: 'live' | 'upload') => {
@@ -990,10 +1020,40 @@ export default function CoachPage() {
               )}
 
               {!isStreaming && uploadedFilename && (
-                <div className="absolute left-3 top-3 rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm">
-                  <p className="text-[10px] font-medium text-white/80">
+                <div className="pointer-events-none absolute left-3 top-3 max-w-[55%] rounded-full bg-black/60 px-3 py-1.5 backdrop-blur-sm">
+                  <p className="truncate text-[10px] font-medium text-white/80">
                     {uploadedFilename}
                   </p>
+                </div>
+              )}
+
+              {!isStreaming && (
+                <div className="absolute right-3 top-3 flex items-center gap-2">
+                  <input
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    id="video-upload-replace"
+                    onChange={handleFileSelect}
+                  />
+                  <label
+                    htmlFor="video-upload-replace"
+                    className="flex cursor-pointer items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-[11px] font-medium text-white/90 backdrop-blur-sm transition-colors hover:bg-black/75 hover:text-white"
+                    title="Replace video"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Replace
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleClearUpload}
+                    className="flex items-center gap-1.5 rounded-full bg-black/60 px-3 py-1.5 text-[11px] font-medium text-white/90 backdrop-blur-sm transition-colors hover:bg-red-500/80 hover:text-white"
+                    title="Remove video"
+                    aria-label="Remove uploaded video"
+                  >
+                    <X className="h-3.5 w-3.5" />
+                    Remove
+                  </button>
                 </div>
               )}
             </div>

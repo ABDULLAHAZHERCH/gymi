@@ -23,7 +23,10 @@ export interface FormFeedback {
 export interface WsPoseRequest {
   landmarks: PoseLandmark[];
   timestamp: number;
+  camera_view?: CameraViewPreference;
 }
+
+export type CameraViewPreference = 'auto' | 'front' | 'side' | 'three_quarter';
 
 export type SystemState = 'idle' | 'stationary' | 'scanning' | 'active';
 export type RepPhase = 'idle' | 'setup' | 'eccentric' | 'concentric' | 'hold';
@@ -48,6 +51,7 @@ export interface WsFormCorrectionResponse {
   signal_quality?: string;
   exercise_variant?: string | null;
   exercise_source?: string;
+  camera_view?: string;
 }
 
 export interface CoachRepDetail {

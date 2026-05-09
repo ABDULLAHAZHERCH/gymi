@@ -46,7 +46,7 @@ export const config = {
     /** Path to MediaPipe Pose Landmarker model (served from public/) */
     modelPath:
       process.env.NEXT_PUBLIC_MEDIAPIPE_MODEL_PATH ||
-      'https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_lite/float16/1/pose_landmarker_lite.task',
+      '/models/pose_landmarker_lite.task',
   },
   upload: {
     /** Chunk size for video upload (5 MB) */

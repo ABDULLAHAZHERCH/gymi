@@ -3,6 +3,7 @@
 import { useEffect, useRef, useCallback, useState, useId } from 'react';
 import { config } from '@/lib/config';
 import type {
+  CameraViewPreference,
   PoseLandmark,
   WsFormCorrectionResponse,
   WsPoseRequest,
@@ -14,6 +15,7 @@ export type FormCorrectionResponse = WsFormCorrectionResponse;
 interface UsePoseWebSocketOptions {
   clientId?: string;
   enabled?: boolean;
+  cameraView?: CameraViewPreference;
   onMessage?: (response: WsFormCorrectionResponse) => void;
   onError?: (error: Error) => void;
   onConnect?: () => void;
@@ -24,6 +26,7 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
   const {
     clientId: externalClientId,
     enabled = true,
+    cameraView = 'auto',
     onMessage,
     onError,
     onConnect,
@@ -212,6 +215,7 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
           visibility: lm.visibility,
         })),
         timestamp: timestamp ?? Date.now(),
+        camera_view: cameraView,
       };
 
       const message = JSON.stringify(request);
@@ -226,7 +230,7 @@ export function usePoseWebSocket(options: UsePoseWebSocketOptions = {}) {
         }
       }
     },
-    []
+    [cameraView]
   );
 
   // Reset session on server

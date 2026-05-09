@@ -18,6 +18,8 @@ const AUTH_ERROR_MAP: Record<string, string> = {
   'auth/invalid-credential': 'Invalid email or password',
   'auth/too-many-requests': 'Too many attempts. Please try again later',
   'auth/network-request-failed': 'Network error. Check your connection and try again',
+  'auth/internal-error': 'Google sign-in could not reach Google services. Check your internet or DNS settings, then try again',
+  'auth/popup-blocked': 'The sign-in popup was blocked. Allow popups or try again',
   'auth/popup-closed-by-user': 'Sign-in was cancelled',
   'auth/requires-recent-login': 'Please log in again to complete this action',
   'auth/credential-already-in-use': 'This credential is already linked to another account',

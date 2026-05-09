@@ -13,6 +13,8 @@ import type { PoseLandmark } from '@/lib/contracts/integration';
 // Keep a singleton so we don't re-initialise on every component mount
 let poseLandmarkerPromise: Promise<unknown> | null = null;
 
+const DEFAULT_WASM_PATH = '/mediapipe/wasm';
+
 interface RawPoseLandmark {
   x?: number;
   y?: number;
@@ -36,17 +38,26 @@ export async function getPoseLandmarker(modelPath: string) {
     );
 
     const vision = await FilesetResolver.forVisionTasks(
-      'https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm'
+      process.env.NEXT_PUBLIC_MEDIAPIPE_WASM_PATH || DEFAULT_WASM_PATH
     );
 
-    const landmarker = await PoseLandmarker.createFromOptions(vision, {
-      baseOptions: {
-        modelAssetPath: modelPath,
-        delegate: 'GPU', // fall back to CPU automatically
-      },
-      runningMode: 'VIDEO',
-      numPoses: 1,
-    });
+    const createLandmarker = (delegate: 'GPU' | 'CPU') =>
+      PoseLandmarker.createFromOptions(vision, {
+        baseOptions: {
+          modelAssetPath: modelPath,
+          delegate,
+        },
+        runningMode: 'VIDEO',
+        numPoses: 1,
+      });
+
+    let landmarker: unknown;
+    try {
+      landmarker = await createLandmarker('GPU');
+    } catch (error) {
+      console.warn('[MediaPipe] GPU delegate failed, retrying with CPU.', error);
+      landmarker = await createLandmarker('CPU');
+    }
 
     return landmarker;
   })();

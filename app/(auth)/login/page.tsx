@@ -1,7 +1,14 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
-import { loginUser, signInWithGoogle } from '@/lib/auth';
+import { useEffect, useState, FormEvent } from 'react';
+import {
+  finishGoogleRedirectSignIn,
+  GoogleOAuthBootstrapError,
+  hasPendingGoogleRedirect,
+  loginUser,
+  signInWithGoogle,
+  startGoogleRedirectSignIn,
+} from '@/lib/auth';
 import { getErrorMessage } from '@/lib/utils/errorMessages';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -14,6 +21,31 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  useEffect(() => {
+    if (!hasPendingGoogleRedirect()) return;
+
+    let active = true;
+    setGoogleLoading(true);
+
+    finishGoogleRedirectSignIn()
+      .then((result) => {
+        if (!active || !result) return;
+        router.push(result.isNewUser ? '/onboarding' : '/home');
+      })
+      .catch((err) => {
+        if (active) {
+          setError(getErrorMessage(err, 'Google sign-in failed'));
+        }
+      })
+      .finally(() => {
+        if (active) setGoogleLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [router]);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -44,6 +76,16 @@ export default function LoginPage() {
       const { isNewUser } = await signInWithGoogle();
       router.push(isNewUser ? '/onboarding' : '/home');
     } catch (err) {
+      if (err instanceof GoogleOAuthBootstrapError) {
+        try {
+          await startGoogleRedirectSignIn();
+          return;
+        } catch (redirectErr) {
+          setError(getErrorMessage(redirectErr, 'Google sign-in failed'));
+          return;
+        }
+      }
+
       setError(getErrorMessage(err, 'Google sign-in failed'));
     } finally {
       setGoogleLoading(false);

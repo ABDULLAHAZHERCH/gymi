@@ -1,8 +1,15 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
-import { registerUser, signInWithGoogle } from '@/lib/auth';
+import {
+  finishGoogleRedirectSignIn,
+  GoogleOAuthBootstrapError,
+  hasPendingGoogleRedirect,
+  registerUser,
+  signInWithGoogle,
+  startGoogleRedirectSignIn,
+} from '@/lib/auth';
 import { getErrorMessage } from '@/lib/utils/errorMessages';
 import Link from 'next/link';
 import { Eye, EyeOff, Mail, Lock, User, Loader2, Check } from 'lucide-react';
@@ -18,6 +25,31 @@ export default function RegisterPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+
+  useEffect(() => {
+    if (!hasPendingGoogleRedirect()) return;
+
+    let active = true;
+    setGoogleLoading(true);
+
+    finishGoogleRedirectSignIn()
+      .then((result) => {
+        if (!active || !result) return;
+        router.push(result.isNewUser ? '/onboarding' : '/home');
+      })
+      .catch((err) => {
+        if (active) {
+          setError(getErrorMessage(err, 'Google sign-up failed'));
+        }
+      })
+      .finally(() => {
+        if (active) setGoogleLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [router]);
 
   // Password strength helpers
   const passwordChecks = {
@@ -76,6 +108,16 @@ export default function RegisterPage() {
       const { isNewUser } = await signInWithGoogle();
       router.push(isNewUser ? '/onboarding' : '/home');
     } catch (err) {
+      if (err instanceof GoogleOAuthBootstrapError) {
+        try {
+          await startGoogleRedirectSignIn();
+          return;
+        } catch (redirectErr) {
+          setError(getErrorMessage(redirectErr, 'Google sign-up failed'));
+          return;
+        }
+      }
+
       setError(getErrorMessage(err, 'Google sign-up failed'));
     } finally {
       setGoogleLoading(false);

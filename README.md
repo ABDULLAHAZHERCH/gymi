@@ -9,6 +9,9 @@
 - **Workout Tracking** — Log exercises, sets, reps, and weight with intelligent search and filtering
 - **Nutrition Logging** — Track meals, macros, and calories throughout your day
 - **AI Form Coach** — Real-time pose detection and feedback via computer vision (FastAPI + MediaPipe)
+- **Gymi Agent** — Gemini LLM chat grounded in the logged-in user's Firebase training, nutrition, goals, and live form mistakes
+- **Offline MediaPipe Runtime** — Pose WASM and the pose-landmarker model are served from `public/` for reliable local demos
+- **Camera Perspective Controls** — Coach mode can send auto/front/side/three-quarter camera-view hints to the backend
 - **Progress Monitoring** — Weight tracking with visual charts, goal management, and achievements
 - **In-App Notifications** — Bell icon with 10 notification types (streaks, milestones, PRs, goals, weekly summary)
 - **Imperial Units** — Toggle between metric (kg/cm) and imperial (lbs/ft-in) — stores metric internally
@@ -36,6 +39,7 @@ Visit [localhost:3000](http://localhost:3000) for local development, or check ou
 - **Tailwind CSS v4** — Modern utility-first styling with dark mode
 - **FastAPI Backend** — Python-based AI pose detection (WebSocket)
 - **MediaPipe** — Google's ML framework for pose landmarks
+- **Gemini** — Server-side LLM answers for the in-app coach agent
 
 ## 📁 Project Structure
 
@@ -87,11 +91,28 @@ NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
 NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_project.appspot.com
 NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=your_sender_id
 NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+NEXT_PUBLIC_FORM_COACH_URL=http://localhost:8000
+GEMINI_API_KEY=your_gemini_api_key
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 ## 🧠 AI Coach Backend
 
 The form correction feature requires a separate FastAPI server. See [BACKEND_Repository](https://github.com/shahmir2004/exercise-form-correction) for details.
+
+Coach mode sends `camera_view` with each WebSocket frame and displays the backend's resolved perspective. MediaPipe runtime files live in `public/mediapipe/wasm`, and the pose model lives at `public/models/pose_landmarker_lite.task`, so the local demo does not depend on jsDelivr or Google Storage at runtime.
+
+## Gymi Agent
+
+The Gymi Agent lives on the coach page and calls `/api/coach-agent`. It uses Gemini through `GEMINI_API_KEY` and sends a compact Firebase-backed context from the logged-in user:
+
+- recent coach sessions and form mistake counts
+- recent workouts
+- recent meals/macros
+- active goals
+- live exercise, violations, and corrections from the current set
+
+If `GEMINI_API_KEY` is missing or the model cannot be reached, the API returns a clear LLM-unavailable message instead of silently pretending to answer with a rule-based fallback.
 
 ## � Full Documentation
 

@@ -31,6 +31,7 @@ import {
 import { useToast } from '@/lib/contexts/ToastContext';
 import { useAuth } from '@/components/providers/AuthProvider';
 import AppLayout from '@/components/layout/AppLayout';
+import CoachAgentPanel from '@/components/features/CoachAgentPanel';
 import { config } from '@/lib/config';
 import {
   getPoseLandmarker,
@@ -38,7 +39,7 @@ import {
   resetPoseLandmarker,
 } from '@/lib/mediapipe';
 import { saveCoachSession } from '@/lib/coachSessions';
-import type { CoachRepDetail } from '@/lib/contracts/integration';
+import type { CameraViewPreference, CoachRepDetail } from '@/lib/contracts/integration';
 
 /* ------------------------------------------------------------------ */
 /*  Constants                                                          */
@@ -49,6 +50,21 @@ const DETECTION_INTERVAL_MS = 50;
 
 /** Minimum landmark visibility for drawing joints/segments. */
 const MIN_DRAW_VISIBILITY = 0.2;
+
+function formatLoadError(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  if (error instanceof Event) {
+    const target = error.target as HTMLScriptElement | null;
+    return target?.src
+      ? `Failed to load ${target.src}`
+      : `Browser ${error.type} event`;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
 
 /** Joint-name mapping for skeleton overlay colors from backend */
 const JOINT_NAMES: Record<number, string> = {
@@ -103,6 +119,7 @@ export default function CoachPage() {
   const [formResponse, setFormResponse] = useState<FormCorrectionResponse | null>(null);
   const [currentLandmarks, setCurrentLandmarks] = useState<PoseLandmark[]>([]);
   const [exerciseMode, setExerciseMode] = useState<'live' | 'upload'>('live');
+  const [cameraView, setCameraView] = useState<CameraViewPreference>('auto');
   const [uploadedVideoUrl, setUploadedVideoUrl] = useState<string | null>(null);
   const [uploadedFilename, setUploadedFilename] = useState<string | null>(null);
   const [isPreparingUploadVideo, setIsPreparingUploadVideo] = useState(false);
@@ -145,6 +162,7 @@ export default function CoachPage() {
   } = usePoseWebSocket({
     clientId: stableClientId,
     enabled: false, // manual connect/disconnect
+    cameraView,
     onMessage: (response) => {
       setFormResponse(response);
 
@@ -200,7 +218,7 @@ export default function CoachPage() {
       )) as PoseLandmarkerLike;
       setMediapipeReady(true);
     } catch (err) {
-      console.error('[Coach] MediaPipe init failed:', err);
+      console.error('[Coach] MediaPipe init failed:', formatLoadError(err), err);
       showToast('Failed to load pose detection model', 'error');
       resetPoseLandmarker();
     } finally {
@@ -889,6 +907,29 @@ export default function CoachPage() {
           </button>
         </div>
 
+        {/* Camera perspective */}
+        <div className="grid grid-cols-4 gap-2 rounded-2xl border border-zinc-200 p-2 dark:border-zinc-800">
+          {[
+            ['auto', 'Auto'],
+            ['front', 'Front'],
+            ['side', 'Side'],
+            ['three_quarter', '3/4'],
+          ].map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setCameraView(value as CameraViewPreference)}
+              className={`rounded-xl px-2 py-2 text-xs font-medium transition-colors ${
+                cameraView === value
+                  ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                  : 'text-[color:var(--muted-foreground)] hover:bg-zinc-100 dark:hover:bg-zinc-900'
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
         {/* Camera / Upload area */}
         <div
           ref={containerRef}
@@ -1236,6 +1277,13 @@ export default function CoachPage() {
         {isStreaming && !isInitializing && (
           <StatusBanner formResponse={formResponse} />
         )}
+
+        <CoachAgentPanel
+          uid={user?.uid}
+          liveExercise={formResponse?.current_exercise}
+          liveViolations={formResponse?.violations}
+          liveCorrections={formResponse?.corrections}
+        />
       </section>
     </AppLayout>
   );
@@ -1371,6 +1419,11 @@ function ExerciseDisplay({
           {formResponse.phase_display && (
             <span className="rounded-full bg-zinc-100 px-2 py-1 dark:bg-zinc-900">
               {formResponse.phase_display}
+            </span>
+          )}
+          {formResponse.camera_view && (
+            <span className="rounded-full bg-zinc-100 px-2 py-1 dark:bg-zinc-900">
+              View: {formResponse.camera_view.replace(/_/g, ' ')}
             </span>
           )}
         </div>

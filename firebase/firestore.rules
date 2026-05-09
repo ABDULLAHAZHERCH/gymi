@@ -49,6 +49,16 @@ service cloud.firestore {
       match /workoutPrograms/{programId} {
         allow read, write: if isAuth() && isOwner(uid);
       }
+
+      // Subcollections: AI coach sessions (rep breakdown + form analysis)
+      match /coachSessions/{sessionId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
+
+      // Subcollections: saved meal templates
+      match /mealTemplates/{templateId} {
+        allow read, write: if isAuth() && isOwner(uid);
+      }
     }
 
     // Public data (if needed in future)

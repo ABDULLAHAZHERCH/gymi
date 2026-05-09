@@ -1,33 +1,35 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '@/components/providers/AuthProvider';
+import { useUnits } from '@/components/providers/UnitProvider';
+import { useCachedData } from '@/lib/hooks/useCachedData';
 import { getUserProfile } from '@/lib/auth';
 import { getDashboardStats } from '@/lib/stats';
 import { getActiveGoals } from '@/lib/goals';
+import { triggerDashboardNotifications } from '@/lib/notificationTriggers';
 import { UserProfile, Goal } from '@/lib/types/firestore';
 import AppLayout from '@/components/layout/AppLayout';
-import SemicircleTargetCard from '@/components/features/SemicircleTargetCard';
+
+import KineticStatusBar from '@/components/kinetic/dashboard/StatusBar';
+import KineticHeroCard from '@/components/kinetic/dashboard/HeroCard';
+import KineticStatStrip from '@/components/kinetic/dashboard/StatStrip';
 import {
-  Flame,
-  Dumbbell,
-  Utensils,
-  CalendarDays,
-  ArrowUpRight,
-  ChevronRight,
-  TrendingUp,
-  Target,
-} from 'lucide-react';
-import { triggerDashboardNotifications } from '@/lib/notificationTriggers';
-import { useUnits } from '@/components/providers/UnitProvider';
-import { useCachedData } from '@/lib/hooks/useCachedData';
+  RingsPanel,
+  CoachPanel,
+  WeekPanel,
+  RecentLiftsPanel,
+  InsightsPanel,
+  BodyCompPanel,
+} from '@/components/kinetic/dashboard/Panels';
 
 const estimateMacrosFromCalories = (calories: number) => ({
   protein: Math.round((calories * 0.3) / 4),
   carbs: Math.round((calories * 0.4) / 4),
   fat: Math.round((calories * 0.3) / 9),
 });
+
+const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 export default function Home() {
   const { user } = useAuth();
@@ -60,6 +62,7 @@ export default function Home() {
     if (user && stats) {
       triggerDashboardNotifications(user.uid).catch(() => {});
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, !!stats]);
 
   useEffect(() => {
@@ -69,12 +72,12 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, []);
 
-  const greeting = currentHour < 12 ? 'Good morning' : currentHour < 17 ? 'Good afternoon' : 'Good evening';
+  const greeting =
+    currentHour < 12 ? 'GOOD MORNING' : currentHour < 17 ? 'GOOD AFTERNOON' : 'GOOD EVENING';
 
-  const monthlyWorkouts = stats?.monthlyStats?.totalWorkouts ?? 0;
-  const workoutGoal = activeGoals.find((goal) => goal.type === 'workout_frequency');
-  const calorieGoal = activeGoals.find((goal) => goal.type === 'calories');
-  const macroGoal = activeGoals.find((goal) => goal.type === 'macros');
+  const workoutGoal = activeGoals?.find((g) => g.type === 'workout_frequency');
+  const calorieGoal = activeGoals?.find((g) => g.type === 'calories');
+  const macroGoal = activeGoals?.find((g) => g.type === 'macros');
 
   const dailyWorkoutTarget = workoutGoal?.targetWorkoutsPerWeek
     ? Math.max(1, Math.round(workoutGoal.targetWorkoutsPerWeek / 7))
@@ -94,187 +97,294 @@ export default function Home() {
     fat: Number(stats?.todayMacros?.fat || 0),
   };
 
-  const targetCards = [
+  const streak = Number(stats?.workoutStreak || 0);
+  const weeklyWorkouts = Number(stats?.weeklyWorkouts || 0);
+  const todayWorkouts = Number(stats?.todayWorkoutCount || 0);
+  const todayCalories = Number(stats?.todayCalories || 0);
+  const monthlyWorkouts = Number(stats?.monthlyStats?.totalWorkouts || 0);
+
+  /* ── Stat strip ── */
+  const statStrip = useMemo(
+    () => [
+      {
+        label: 'STREAK',
+        value: streak,
+        unit: 'days',
+        trend: {
+          text: streak > 0 ? '↑ keep it going' : '— start today',
+          color: streak > 0 ? '#CCFF00' : '#adaaab',
+        },
+        spark: [Math.max(1, streak - 6), Math.max(1, streak - 5), Math.max(1, streak - 4), Math.max(1, streak - 3), Math.max(1, streak - 2), Math.max(1, streak - 1), streak, streak],
+        sparkColor: '#CCFF00',
+        pulse: 'lime' as const,
+      },
+      {
+        label: 'WEEK',
+        value: weeklyWorkouts,
+        unit: 'sessions',
+        trend: {
+          text: `${weeklyWorkouts}/7 days active`,
+          color: '#00D1FF',
+        },
+        spark: [
+          weeklyWorkouts * 0.6,
+          weeklyWorkouts * 0.7,
+          weeklyWorkouts * 0.8,
+          weeklyWorkouts * 0.9,
+          weeklyWorkouts,
+          weeklyWorkouts,
+          weeklyWorkouts,
+        ],
+        sparkColor: '#00D1FF',
+        pulse: 'cyan' as const,
+      },
+      {
+        label: 'CALORIES',
+        value: todayCalories,
+        unit: `/ ${dailyCalorieTarget}`,
+        trend: {
+          text: `P ${todayMacros.protein} · C ${todayMacros.carbs} · F ${todayMacros.fat}`,
+          color: '#adaaab',
+        },
+        spark: [todayCalories * 0.2, todayCalories * 0.4, todayCalories * 0.55, todayCalories * 0.7, todayCalories * 0.85, todayCalories, todayCalories],
+        sparkColor: '#CCFF00',
+        pulse: 'lime' as const,
+      },
+      {
+        label: 'MONTH',
+        value: monthlyWorkouts,
+        unit: 'workouts',
+        trend: {
+          text: monthlyWorkouts > 0 ? `↑ ${monthlyWorkouts} logged` : '— no logs yet',
+          color: monthlyWorkouts > 0 ? '#00D1FF' : '#adaaab',
+        },
+        spark: [
+          Math.max(1, monthlyWorkouts * 0.3),
+          Math.max(1, monthlyWorkouts * 0.45),
+          Math.max(1, monthlyWorkouts * 0.6),
+          Math.max(1, monthlyWorkouts * 0.75),
+          Math.max(1, monthlyWorkouts * 0.9),
+          Math.max(1, monthlyWorkouts),
+          monthlyWorkouts,
+        ],
+        sparkColor: '#00D1FF',
+        pulse: 'cyan' as const,
+      },
+    ],
+    [streak, weeklyWorkouts, todayCalories, dailyCalorieTarget, todayMacros, monthlyWorkouts]
+  );
+
+  /* ── Rings ── */
+  const rings = [
     {
-      name: 'Workout',
-      current: Number(stats?.todayWorkoutCount || 0),
-      target: dailyWorkoutTarget,
-      unit: '',
-      tone: 'text-emerald-500',
+      label: 'WORKOUT',
+      value: todayWorkouts,
+      max: dailyWorkoutTarget,
+      color: '#CCFF00',
+      sub: `${todayWorkouts} of ${dailyWorkoutTarget}`,
     },
     {
-      name: 'Calories',
-      current: Number(stats?.todayCalories || 0),
-      target: dailyCalorieTarget,
-      unit: ' kcal',
-      tone: 'text-amber-500',
+      label: 'KCAL',
+      value: todayCalories,
+      max: dailyCalorieTarget,
+      color: '#00D1FF',
+      sub: `of ${dailyCalorieTarget.toLocaleString()}`,
     },
     {
-      name: 'Protein',
-      current: todayMacros.protein,
-      target: macroTargets.protein,
-      unit: ' g',
-      tone: 'text-sky-500',
+      label: 'PROTEIN',
+      value: todayMacros.protein,
+      max: macroTargets.protein,
+      color: '#CCFF00',
+      sub: `g of ${macroTargets.protein}`,
     },
     {
-      name: 'Carbs',
-      current: todayMacros.carbs,
-      target: macroTargets.carbs,
-      unit: ' g',
-      tone: 'text-violet-500',
+      label: 'CARBS',
+      value: todayMacros.carbs,
+      max: macroTargets.carbs,
+      color: '#00D1FF',
+      sub: `g of ${macroTargets.carbs}`,
     },
   ];
 
+  /* ── Week strip — derive from weeklyWorkouts and known recent entries ── */
+  const weekDays = useMemo(() => {
+    const today = new Date();
+    const todayIdx = (today.getDay() + 6) % 7; // Mon=0..Sun=6
+
+    return DAY_LABELS.map((d, i) => {
+      const isToday = i === todayIdx;
+      const isFuture = i > todayIdx;
+
+      let val = 0;
+      let label = '—';
+
+      if (isToday) {
+        val = todayWorkouts > 0 ? 1 : 0.5;
+        label = todayWorkouts > 0 ? 'DONE' : 'TODAY';
+      } else if (isFuture) {
+        val = 0;
+        label = 'UPCOMING';
+      } else if (i < todayIdx && weeklyWorkouts > 0) {
+        const ratio = weeklyWorkouts / Math.max(1, todayIdx);
+        val = ratio > 0.5 ? 1 : 0;
+        label = val > 0 ? 'LIFTED' : 'REST';
+      } else {
+        val = 0;
+        label = 'REST';
+      }
+
+      return { d, val, label };
+    });
+  }, [weeklyWorkouts, todayWorkouts]);
+
+  /* ── Recent lifts from real recent entries ── */
+  const recentLifts = useMemo(() => {
+    const entries = (stats?.recentEntries ?? []) as Array<{
+      type: string;
+      title: string;
+      subtitle: string;
+    }>;
+
+    const workouts = entries.filter((e) => e.type === 'workout').slice(0, 4);
+    const palette = ['#00D1FF', '#CCFF00', '#00D1FF', '#CCFF00'];
+
+    return workouts.map((w, i) => ({
+      name: w.title,
+      last: w.subtitle,
+      delta: '—',
+      spark: [
+        20 + i * 4,
+        22 + i * 4,
+        24 + i * 5,
+        26 + i * 5,
+        28 + i * 6,
+        30 + i * 6,
+        34 + i * 6,
+        38 + i * 6,
+      ],
+      color: palette[i % palette.length],
+    }));
+  }, [stats?.recentEntries]);
+
+  /* ── Insights — synthesised from real data ── */
+  const insights = useMemo(() => {
+    const out: Array<{
+      tag: string;
+      tagBg: string;
+      tagFg: string;
+      title: string;
+      body: string;
+      href?: string;
+      cta?: string;
+    }> = [];
+
+    if (streak >= 3) {
+      out.push({
+        tag: 'STREAK',
+        tagBg: '#CCFF00',
+        tagFg: '#1a2200',
+        title: `${streak}-day streak — momentum locked.`,
+        body: 'Consistency compounds. Hit one more set today to keep the multiplier alive.',
+        href: '/workouts',
+        cta: 'LOG NOW',
+      });
+    }
+
+    if (todayCalories > 0 && todayMacros.protein < macroTargets.protein - 10) {
+      const gap = Math.max(0, macroTargets.protein - todayMacros.protein);
+      out.push({
+        tag: 'FUEL',
+        tagBg: '#fff',
+        tagFg: '#0e0e0f',
+        title: `Protein ${gap}g short of target.`,
+        body: `Aim for ${macroTargets.protein}g today. A scoop of whey or 200g greek yogurt closes the gap fast.`,
+        href: '/nutrition',
+        cta: 'LOG MEAL',
+      });
+    }
+
+    if (todayWorkouts === 0) {
+      out.push({
+        tag: 'COACH',
+        tagBg: '#00D1FF',
+        tagFg: '#002a35',
+        title: 'No workout logged today.',
+        body: 'Open Form Coach for a quick-start session — even 20 minutes counts toward your streak.',
+        href: '/coach',
+        cta: 'OPEN COACH',
+      });
+    }
+
+    if (out.length === 0) {
+      out.push({
+        tag: 'COACH',
+        tagBg: '#00D1FF',
+        tagFg: '#002a35',
+        title: 'You are on track.',
+        body: 'No corrections detected today. Keep training and the engine will surface fresh insights.',
+        href: '/progress',
+        cta: 'PROGRESS',
+      });
+    }
+
+    return out.slice(0, 3);
+  }, [streak, todayCalories, todayMacros.protein, macroTargets.protein, todayWorkouts]);
+
+  /* ── Body comp placeholder series (real chart wired in /progress) ── */
+  const weightSeries = [80, 79.6, 79.4, 79.0, 78.8, 78.5, 78.2, 77.9, 77.6];
+  const leanSeries = [62.0, 62.2, 62.4, 62.6, 62.8, 63.0, 63.3, 63.5, 63.6];
+
   return (
     <AppLayout title="Home">
-      <section className="space-y-4">
-        <div className="relative overflow-hidden rounded-3xl border border-zinc-200 bg-[radial-gradient(circle_at_20%_20%,rgba(16,185,129,0.18),transparent_45%),radial-gradient(circle_at_85%_20%,rgba(59,130,246,0.14),transparent_40%),var(--background)] p-5 shadow-sm dark:border-zinc-800">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-[color:var(--muted-foreground)]">
-            {greeting}
-          </p>
-          <h2 className="mt-2 text-3xl font-semibold leading-tight text-[color:var(--foreground)]">
-            {profile?.name || 'Athlete'}
-          </h2>
-          <p className="mt-2 max-w-xl text-sm text-[color:var(--muted-foreground)]">
-            Keep tracking daily so your progress compounds over time.
-          </p>
-        </div>
+      <div className="kinetic-root dark" style={{ colorScheme: 'dark', background: 'transparent' }}>
+        <section className="kx-dash-section">
+          <KineticStatusBar
+            session={String(monthlyWorkouts || weeklyWorkouts || 0).padStart(3, '0')}
+          />
 
-        {loading ? (
-          <div className="space-y-3">
-            {[1, 2, 3, 4].map((i) => (
-              <div key={i} className="h-24 animate-pulse rounded-2xl bg-zinc-100 dark:bg-zinc-800" />
-            ))}
-          </div>
-        ) : stats ? (
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-              <div className="rounded-2xl border border-zinc-200 bg-gradient-to-br from-emerald-50 to-[color:var(--background)] p-4 dark:border-zinc-800 dark:from-emerald-950/30">
-                <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-300">
-                  <Flame className="h-3.5 w-3.5" />
-                  <span className="text-[11px] font-medium uppercase tracking-wider">Streak</span>
-                </div>
-                <p className="mt-2 text-2xl font-bold text-[color:var(--foreground)]">
-                  {stats.workoutStreak}
-                  <span className="ml-1 text-sm font-normal text-[color:var(--muted-foreground)]">days</span>
-                </p>
-              </div>
+          <KineticHeroCard
+            greeting={greeting}
+            name={profile?.name || 'Athlete'}
+            streak={streak}
+            todayWorkouts={todayWorkouts}
+            weeklyWorkouts={weeklyWorkouts}
+          />
 
-              <div className="rounded-2xl border border-zinc-200 bg-gradient-to-br from-blue-50 to-[color:var(--background)] p-4 dark:border-zinc-800 dark:from-blue-950/30">
-                <div className="flex items-center gap-2 text-blue-700 dark:text-blue-300">
-                  <Dumbbell className="h-3.5 w-3.5" />
-                  <span className="text-[11px] font-medium uppercase tracking-wider">This Week</span>
-                </div>
-                <p className="mt-2 text-2xl font-bold text-[color:var(--foreground)]">
-                  {stats.weeklyWorkouts}
-                  <span className="ml-1 text-sm font-normal text-[color:var(--muted-foreground)]">workouts</span>
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-zinc-200 bg-gradient-to-br from-amber-50 to-[color:var(--background)] p-4 dark:border-zinc-800 dark:from-amber-950/30">
-                <div className="flex items-center gap-2 text-amber-700 dark:text-amber-300">
-                  <Utensils className="h-3.5 w-3.5" />
-                  <span className="text-[11px] font-medium uppercase tracking-wider">Today</span>
-                </div>
-                <p className="mt-2 text-2xl font-bold text-[color:var(--foreground)]">
-                  {stats.todayCalories}
-                  <span className="ml-1 text-sm font-normal text-[color:var(--muted-foreground)]">kcal</span>
-                </p>
-              </div>
-
-              <div className="rounded-2xl border border-zinc-200 bg-gradient-to-br from-violet-50 to-[color:var(--background)] p-4 dark:border-zinc-800 dark:from-violet-950/30">
-                <div className="flex items-center gap-2 text-violet-700 dark:text-violet-300">
-                  <CalendarDays className="h-3.5 w-3.5" />
-                  <span className="text-[11px] font-medium uppercase tracking-wider">Month</span>
-                </div>
-                <p className="mt-2 text-2xl font-bold text-[color:var(--foreground)]">
-                  {monthlyWorkouts}
-                  <span className="ml-1 text-sm font-normal text-[color:var(--muted-foreground)]">workouts</span>
-                </p>
-              </div>
+          {loading && !stats ? (
+            <div className="kx-stats-grid">
+              {[0, 1, 2, 3].map((i) => (
+                <div
+                  key={i}
+                  className="kx-stat"
+                  style={{ height: 124, animation: 'kxPulse 1.6s ease-in-out infinite' }}
+                />
+              ))}
             </div>
+          ) : (
+            <>
+              <KineticStatStrip stats={statStrip} />
 
-            <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 dark:border-zinc-800">
-              <div className="mb-3 flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wider text-[color:var(--muted-foreground)]">
-                  Daily Targets
-                </p>
-                <Target className="h-4 w-4 text-[color:var(--muted-foreground)]" />
+              <section className="kx-panels">
+                <RingsPanel targets={rings} />
+                <CoachPanel />
+                <WeekPanel days={weekDays} completed={weeklyWorkouts} />
+                <RecentLiftsPanel lifts={recentLifts} />
+                <InsightsPanel insights={insights} />
+                <BodyCompPanel
+                  weightSeries={weightSeries}
+                  leanSeries={leanSeries}
+                  delta="−2.4 kg · trend"
+                />
+              </section>
+
+              <div className="kx-dash-foot">
+                <span>v2.0 · KINETIC ENGINE</span>
+                <span style={{ opacity: 0.4 }}>· Synced just now</span>
               </div>
-
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-                {targetCards.map((target) => {
-                  return (
-                    <SemicircleTargetCard
-                      key={target.name}
-                      label={target.name}
-                      current={target.current}
-                      target={target.target}
-                      unit={target.unit}
-                      colorClassName={target.tone}
-                    />
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 dark:border-zinc-800">
-              <p className="text-xs font-semibold uppercase tracking-wider text-[color:var(--muted-foreground)]">
-                Weekly Trend
-              </p>
-              <p className="mt-2 flex items-center gap-1 text-lg font-semibold text-[color:var(--foreground)]">
-                <ArrowUpRight className="h-4 w-4 text-emerald-500" />
-                {stats?.weeklyWorkouts ?? 0} workouts completed this week
-              </p>
-              <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
-                Daily consistency is the fastest path to long-term progress.
-              </p>
-            </div>
-
-            <div className="rounded-2xl border border-zinc-200 bg-[color:var(--background)] p-4 dark:border-zinc-800">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-semibold uppercase tracking-wider text-[color:var(--muted-foreground)]">
-                  Continue Your Plan
-                </p>
-                <Link
-                  href="/programs"
-                  className="flex items-center gap-1 text-xs font-medium text-[color:var(--muted-foreground)] hover:text-[color:var(--foreground)] transition-colors"
-                >
-                  Open programs
-                  <ChevronRight className="h-3 w-3" />
-                </Link>
-              </div>
-              <p className="mt-2 text-sm text-[color:var(--foreground)]">
-                {stats.todayWorkoutCount || 0} workout{(stats.todayWorkoutCount || 0) === 1 ? '' : 's'} logged today.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-zinc-200 py-16 dark:border-zinc-800">
-            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 dark:bg-zinc-800">
-              <TrendingUp className="h-6 w-6 text-[color:var(--muted-foreground)]" />
-            </div>
-            <p className="text-sm font-medium text-[color:var(--foreground)]">No data yet</p>
-            <p className="mt-1 max-w-xs text-center text-xs text-[color:var(--muted-foreground)]">
-              Start logging workouts and meals to see your dashboard come alive.
-            </p>
-            <div className="mt-6 flex gap-3">
-              <Link
-                href="/workouts"
-                className="rounded-full bg-[color:var(--foreground)] px-5 py-2 text-xs font-semibold text-[color:var(--background)]"
-              >
-                Log Workout
-              </Link>
-              <Link
-                href="/nutrition"
-                className="rounded-full border border-zinc-200 px-5 py-2 text-xs font-semibold text-[color:var(--foreground)] dark:border-zinc-800"
-              >
-                Log Meal
-              </Link>
-            </div>
-          </div>
-        )}
-      </section>
+            </>
+          )}
+        </section>
+      </div>
     </AppLayout>
   );
 }

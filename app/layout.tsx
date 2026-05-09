@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
+import { Geist, Geist_Mono, Bebas_Neue, Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import ThemeProvider from "@/components/providers/ThemeProvider";
 import { AuthProvider } from "@/components/providers/AuthProvider";
@@ -15,6 +16,26 @@ const geistSans = Geist({
 const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
+});
+
+// Kinetic v2 typography stack
+const bebas = Bebas_Neue({
+  weight: "400",
+  subsets: ["latin"],
+  variable: "--font-display",
+  display: "swap",
+});
+
+const interSans = Inter({
+  subsets: ["latin"],
+  variable: "--font-sans-kinetic",
+  display: "swap",
+});
+
+const jetMono = JetBrains_Mono({
+  subsets: ["latin"],
+  variable: "--font-mono-kinetic",
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -58,8 +79,9 @@ export default function RootLayout({
         />
       </head>
       <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+        className={`${geistSans.variable} ${geistMono.variable} ${bebas.variable} ${interSans.variable} ${jetMono.variable} antialiased`}
       >
+        <Script src="/shader-bg.js" strategy="afterInteractive" />
         <AuthProvider>
           <UnitProvider>
             <ThemeProvider>

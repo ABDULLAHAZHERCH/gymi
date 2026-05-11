@@ -51,6 +51,17 @@ const DETECTION_INTERVAL_MS = 50;
 /** Minimum landmark visibility for drawing joints/segments. */
 const MIN_DRAW_VISIBILITY = 0.2;
 
+/**
+ * Number of consecutive valid reps that should clear the persistent form-issue
+ * list. The user has demonstrated they fixed the problem, so we stop nagging.
+ */
+const CLEAR_ISSUES_AFTER_VALID_REPS = 4;
+
+interface PersistentIssue {
+  violation: string;
+  correction: string;
+}
+
 function formatLoadError(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (error instanceof Event) {
@@ -148,6 +159,14 @@ export default function CoachPage() {
   const confidenceSumRef = useRef(0);
   const confidenceFramesRef = useRef(0);
 
+  // Persistent form-issue list. The backend emits violations frame-by-frame, so
+  // they would otherwise flicker in/out faster than the user can read them.
+  // We accumulate distinct violations (paired with their correction) and only
+  // clear them when the session resets or the user lands several clean reps.
+  const [persistentIssues, setPersistentIssues] = useState<PersistentIssue[]>([]);
+  const lastRepCountRef = useRef(0);
+  const validRepStreakRef = useRef(0);
+
   const [isSaving, setIsSaving] = useState(false);
   const [connectingTooLong, setConnectingTooLong] = useState(false);
 
@@ -178,6 +197,47 @@ export default function CoachPage() {
         violationCountsRef.current[violation] =
           (violationCountsRef.current[violation] ?? 0) + 1;
       });
+
+      // Persistent issues — pair each violation with its same-index correction
+      // (backend emits them in matching order) and append any we haven't seen
+      // yet. Skip work entirely when the frame has no violations to avoid
+      // touching state 20× per second for nothing.
+      const newViolations = response.violations ?? [];
+      const newCorrections = response.corrections ?? [];
+      if (newViolations.length > 0) {
+        setPersistentIssues((prev) => {
+          const seen = new Set(prev.map((issue) => issue.violation));
+          const additions: PersistentIssue[] = [];
+          newViolations.forEach((violation, idx) => {
+            if (!seen.has(violation)) {
+              seen.add(violation);
+              additions.push({
+                violation,
+                correction:
+                  newCorrections[idx] ??
+                  newCorrections[0] ??
+                  'Slow down and reset your form.',
+              });
+            }
+          });
+          return additions.length > 0 ? [...prev, ...additions] : prev;
+        });
+      }
+
+      // Rep counter advanced — record per-rep detail and update the
+      // valid-rep streak that controls when the persistent issue list clears.
+      if (response.rep_count > lastRepCountRef.current) {
+        lastRepCountRef.current = response.rep_count;
+        if (response.is_rep_valid) {
+          validRepStreakRef.current += 1;
+          if (validRepStreakRef.current >= CLEAR_ISSUES_AFTER_VALID_REPS) {
+            validRepStreakRef.current = 0;
+            setPersistentIssues([]);
+          }
+        } else {
+          validRepStreakRef.current = 0;
+        }
+      }
 
       setSessionStats((prev) => {
         if (response.rep_count > prev.totalReps) {
@@ -405,6 +465,9 @@ export default function CoachPage() {
     violationCountsRef.current = {};
     confidenceSumRef.current = 0;
     confidenceFramesRef.current = 0;
+    lastRepCountRef.current = 0;
+    validRepStreakRef.current = 0;
+    setPersistentIssues([]);
     setSessionStats({
       totalReps: 0,
       validReps: 0,
@@ -446,6 +509,9 @@ export default function CoachPage() {
     violationCountsRef.current = {};
     confidenceSumRef.current = 0;
     confidenceFramesRef.current = 0;
+    lastRepCountRef.current = 0;
+    validRepStreakRef.current = 0;
+    setPersistentIssues([]);
     setSessionStats({
       totalReps: 0,
       validReps: 0,
@@ -548,6 +614,9 @@ export default function CoachPage() {
     violationCountsRef.current = {};
     confidenceSumRef.current = 0;
     confidenceFramesRef.current = 0;
+    lastRepCountRef.current = 0;
+    validRepStreakRef.current = 0;
+    setPersistentIssues([]);
     setSessionStats({ totalReps: 0, validReps: 0, startTime: 0, duration: 0 });
     showToast('Session reset', 'info');
   }, [resetSession, showToast]);
@@ -1198,6 +1267,7 @@ export default function CoachPage() {
                 formResponse={formResponse}
                 accuracyPercent={accuracyPercent}
                 elapsedTime={formatTime(sessionStats.duration)}
+                persistentIssues={persistentIssues}
               />
             </aside>
           )}
@@ -1361,6 +1431,8 @@ interface ExerciseDisplayProps {
   formResponse: FormCorrectionResponse | null;
   accuracyPercent: number;
   elapsedTime: string;
+  /** Accumulated form issues paired with their fix; clears after a clean streak. */
+  persistentIssues: PersistentIssue[];
 }
 
 /**
@@ -1373,6 +1445,7 @@ function ExerciseDisplay({
   formResponse,
   accuracyPercent,
   elapsedTime,
+  persistentIssues,
 }: ExerciseDisplayProps) {
   const repCount = formResponse?.rep_count ?? 0;
   const confidencePct = formResponse?.confidence
@@ -1383,8 +1456,10 @@ function ExerciseDisplay({
     formResponse?.current_exercise ||
     'Waiting for exercise…';
   const stateLabel = formResponse?.state ?? 'idle';
-  const violations = formResponse?.violations ?? [];
-  const corrections = formResponse?.corrections ?? [];
+  // Use the persisted, paired list rather than the per-frame arrays so issues
+  // stay readable instead of flickering as new WS frames arrive.
+  const violations = persistentIssues.map((issue) => issue.violation);
+  const corrections = persistentIssues.map((issue) => issue.correction);
 
   return (
     <div className="space-y-3">

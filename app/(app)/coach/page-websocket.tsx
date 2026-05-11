@@ -856,7 +856,7 @@ export default function CoachPage() {
 
   const playerPlaceholderClass = isFullscreen
     ? 'flex h-full w-full flex-col items-center justify-center p-6 relative overflow-hidden'
-    : 'flex aspect-[4/3] w-full flex-col items-center justify-center p-6 sm:aspect-video relative overflow-hidden';
+    : 'flex aspect-[4/3] w-full flex-col items-center justify-center p-4 sm:aspect-video sm:p-6 relative overflow-hidden';
 
   return (
     <AppLayout title="AI Form Coach">
@@ -939,7 +939,7 @@ export default function CoachPage() {
           className={
             isFullscreen
               ? 'contents'
-              : 'grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start'
+              : 'grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start'
           }
         >
         <div
@@ -993,37 +993,37 @@ export default function CoachPage() {
             /* Placeholder / How it works */
             <div className={playerPlaceholderClass}>
               <div className="absolute inset-0 bg-gradient-to-br from-blue-900/20 to-purple-900/20" />
-              <div className="z-10 flex flex-col items-center max-w-md w-full gap-4 text-center">
-                <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white/10 shadow-lg backdrop-blur-md mb-2">
-                  <Activity className="h-8 w-8 text-blue-400 animate-pulse" />
+              <div className="z-10 flex w-full max-w-md flex-col items-center gap-2 text-center sm:gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 shadow-lg backdrop-blur-md sm:h-14 sm:w-14">
+                  <Activity className="h-6 w-6 animate-pulse text-blue-400 sm:h-7 sm:w-7" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-bold text-white mb-2">
+                  <h3 className="text-base font-bold text-white sm:text-lg">
                     AI Form Coach
                   </h3>
-                  <p className="text-sm text-zinc-300">
+                  <p className="mt-1 text-xs text-zinc-300 sm:text-sm">
                     Real-time pose detection analyzes your reps, tracks accuracy, and spots form errors instantly.
                   </p>
                 </div>
-                
-                <div className="w-full grid grid-cols-2 gap-3 mt-4 text-left">
-                  <div className="rounded-xl bg-white/5 p-3 backdrop-blur-md border border-white/10">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Video className="w-4 h-4 text-blue-400" />
-                      <span className="text-xs font-semibold text-white">Full Body</span>
+
+                <div className="grid w-full grid-cols-2 gap-2 text-left">
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-2 backdrop-blur-md sm:p-3">
+                    <div className="mb-0.5 flex items-center gap-1.5">
+                      <Video className="h-3.5 w-3.5 text-blue-400" />
+                      <span className="text-[11px] font-semibold text-white">Full Body</span>
                     </div>
-                    <p className="text-[10px] text-zinc-400">Step back so your whole body is visible in frame.</p>
+                    <p className="text-[10px] text-zinc-400">Step back so your whole body is visible.</p>
                   </div>
-                  <div className="rounded-xl bg-white/5 p-3 backdrop-blur-md border border-white/10">
-                    <div className="flex items-center gap-2 mb-1">
-                      <Target className="w-4 h-4 text-emerald-400" />
-                      <span className="text-xs font-semibold text-white">Auto-Track</span>
+                  <div className="rounded-xl border border-white/10 bg-white/5 p-2 backdrop-blur-md sm:p-3">
+                    <div className="mb-0.5 flex items-center gap-1.5">
+                      <Target className="h-3.5 w-3.5 text-emerald-400" />
+                      <span className="text-[11px] font-semibold text-white">Auto-Track</span>
                     </div>
-                    <p className="text-[10px] text-zinc-400">Once recording, the AI automatically counts reps.</p>
+                    <p className="text-[10px] text-zinc-400">AI automatically counts your reps.</p>
                   </div>
                 </div>
-                <div className="mt-4 text-xs font-medium text-white/50 bg-white/5 px-4 py-2 rounded-full border border-white/5">
-                  <span className="animate-pulse mr-2 inline-block">●</span> Press play below to start
+                <div className="rounded-full border border-white/5 bg-white/5 px-3 py-1 text-[11px] font-medium text-white/60">
+                  <span className="mr-1.5 inline-block animate-pulse">●</span> Press play below to start
                 </div>
               </div>
             </div>
@@ -1181,7 +1181,7 @@ export default function CoachPage() {
           {/* Right-side feedback column (stacks below on small screens).
               Hidden while in fullscreen so the video owns the viewport. */}
           {!isFullscreen && (
-            <aside className="space-y-3 lg:sticky lg:top-4">
+            <aside className="space-y-3 xl:sticky xl:top-4">
               <div className="min-h-[60px]">
                 {isStreaming && !isInitializing ? (
                   <StatusBanner formResponse={formResponse} />

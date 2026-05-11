@@ -166,6 +166,9 @@ export default function CoachPage() {
   const [persistentIssues, setPersistentIssues] = useState<PersistentIssue[]>([]);
   const lastRepCountRef = useRef(0);
   const validRepStreakRef = useRef(0);
+  // Tracks the previously-detected exercise so we can wipe stale issues
+  // (e.g. squat violations) the moment the classifier swaps exercises.
+  const lastExerciseRef = useRef<string | null>(null);
 
   const [isSaving, setIsSaving] = useState(false);
   const [connectingTooLong, setConnectingTooLong] = useState(false);
@@ -184,6 +187,18 @@ export default function CoachPage() {
     cameraView,
     onMessage: (response) => {
       setFormResponse(response);
+
+      // Exercise changed — issues from the previous exercise no longer apply,
+      // so wipe them and reset the clean-rep streak so the new exercise gets
+      // a fresh slate.
+      const newExercise = response.current_exercise ?? null;
+      if (newExercise && newExercise !== lastExerciseRef.current) {
+        if (lastExerciseRef.current !== null) {
+          setPersistentIssues([]);
+          validRepStreakRef.current = 0;
+        }
+        lastExerciseRef.current = newExercise;
+      }
 
       // Track confidence across all frames
       if (typeof response.confidence === 'number' && response.confidence > 0) {
@@ -467,6 +482,7 @@ export default function CoachPage() {
     confidenceFramesRef.current = 0;
     lastRepCountRef.current = 0;
     validRepStreakRef.current = 0;
+    lastExerciseRef.current = null;
     setPersistentIssues([]);
     setSessionStats({
       totalReps: 0,
@@ -511,6 +527,7 @@ export default function CoachPage() {
     confidenceFramesRef.current = 0;
     lastRepCountRef.current = 0;
     validRepStreakRef.current = 0;
+    lastExerciseRef.current = null;
     setPersistentIssues([]);
     setSessionStats({
       totalReps: 0,
@@ -616,6 +633,7 @@ export default function CoachPage() {
     confidenceFramesRef.current = 0;
     lastRepCountRef.current = 0;
     validRepStreakRef.current = 0;
+    lastExerciseRef.current = null;
     setPersistentIssues([]);
     setSessionStats({ totalReps: 0, validReps: 0, startTime: 0, duration: 0 });
     showToast('Session reset', 'info');
@@ -1011,6 +1029,10 @@ export default function CoachPage() {
               : 'grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_300px] xl:items-start'
           }
         >
+        {/* Left column: video + controls. Wrapped together so the play/stop
+            buttons sit directly under the video on xl screens instead of
+            below the entire grid. */}
+        <div className={isFullscreen ? 'contents' : 'space-y-4'}>
         <div
           ref={containerRef}
           className={playerContainerClass}
@@ -1247,33 +1269,7 @@ export default function CoachPage() {
           )}
         </div>
 
-          {/* Right-side feedback column (stacks below on small screens).
-              Hidden while in fullscreen so the video owns the viewport. */}
-          {!isFullscreen && (
-            <aside className="space-y-3 xl:sticky xl:top-4">
-              <div className="min-h-[60px]">
-                {isStreaming && !isInitializing ? (
-                  <StatusBanner formResponse={formResponse} />
-                ) : (
-                  <div className="flex h-full min-h-[60px] items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 px-3 dark:border-zinc-800">
-                    <div className="h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-700" />
-                    <p className="text-xs text-[color:var(--muted-foreground)]">
-                      {isStreaming ? 'Warming up…' : 'Press play to begin'}
-                    </p>
-                  </div>
-                )}
-              </div>
-              <ExerciseDisplay
-                formResponse={formResponse}
-                accuracyPercent={accuracyPercent}
-                elapsedTime={formatTime(sessionStats.duration)}
-                persistentIssues={persistentIssues}
-              />
-            </aside>
-          )}
-        </div>
-
-        {/* Controls */}
+        {/* Controls — sit immediately under the video in the same column */}
         <div className="flex items-center justify-center gap-3">
           {exerciseMode === 'live' && (
             <button
@@ -1282,9 +1278,7 @@ export default function CoachPage() {
                   facingMode === 'user' ? 'environment' : 'user';
                 setFacingMode(next);
                 if (isStreaming) {
-                  // Restart camera with new facing mode
                   stopCamera();
-                  // startCamera will use the updated facingMode after re-render
                   setTimeout(() => {
                     void startCamera();
                   }, 100);
@@ -1353,6 +1347,33 @@ export default function CoachPage() {
               <Maximize className="h-5 w-5" />
             )}
           </button>
+        </div>
+        </div>
+
+          {/* Right-side feedback column (stacks below on small screens).
+              Hidden while in fullscreen so the video owns the viewport. */}
+          {!isFullscreen && (
+            <aside className="space-y-3 xl:sticky xl:top-4">
+              <div className="min-h-[60px]">
+                {isStreaming && !isInitializing ? (
+                  <StatusBanner formResponse={formResponse} />
+                ) : (
+                  <div className="flex h-full min-h-[60px] items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 px-3 dark:border-zinc-800">
+                    <div className="h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+                    <p className="text-xs text-[color:var(--muted-foreground)]">
+                      {isStreaming ? 'Warming up…' : 'Press play to begin'}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <ExerciseDisplay
+                formResponse={formResponse}
+                accuracyPercent={accuracyPercent}
+                elapsedTime={formatTime(sessionStats.duration)}
+                persistentIssues={persistentIssues}
+              />
+            </aside>
+          )}
         </div>
 
         <CoachAgentPanel

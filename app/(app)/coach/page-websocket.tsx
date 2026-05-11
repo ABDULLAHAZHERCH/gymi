@@ -930,7 +930,18 @@ export default function CoachPage() {
           ))}
         </div>
 
-        {/* Camera / Upload area */}
+        {/* Camera / Upload area + side-by-side feedback panel.
+            The grid keeps the video on the left and a stable feedback column
+            on the right (lg+) so the user never has to scroll past the video
+            to see corrections. The right column always reserves its slots so
+            elements update in place rather than appearing/vanishing. */}
+        <div
+          className={
+            isFullscreen
+              ? 'contents'
+              : 'grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start'
+          }
+        >
         <div
           ref={containerRef}
           className={playerContainerClass}
@@ -1167,6 +1178,31 @@ export default function CoachPage() {
           )}
         </div>
 
+          {/* Right-side feedback column (stacks below on small screens).
+              Hidden while in fullscreen so the video owns the viewport. */}
+          {!isFullscreen && (
+            <aside className="space-y-3 lg:sticky lg:top-4">
+              <div className="min-h-[60px]">
+                {isStreaming && !isInitializing ? (
+                  <StatusBanner formResponse={formResponse} />
+                ) : (
+                  <div className="flex h-full min-h-[60px] items-center justify-center gap-2 rounded-xl border border-dashed border-zinc-200 px-3 dark:border-zinc-800">
+                    <div className="h-2 w-2 rounded-full bg-zinc-300 dark:bg-zinc-700" />
+                    <p className="text-xs text-[color:var(--muted-foreground)]">
+                      {isStreaming ? 'Warming up…' : 'Press play to begin'}
+                    </p>
+                  </div>
+                )}
+              </div>
+              <ExerciseDisplay
+                formResponse={formResponse}
+                accuracyPercent={accuracyPercent}
+                elapsedTime={formatTime(sessionStats.duration)}
+              />
+            </aside>
+          )}
+        </div>
+
         {/* Controls */}
         <div className="flex items-center justify-center gap-3">
           {exerciseMode === 'live' && (
@@ -1249,35 +1285,6 @@ export default function CoachPage() {
           </button>
         </div>
 
-        {/* Exercise feedback */}
-        {formResponse && (
-          <ExerciseDisplay
-            formResponse={formResponse}
-            accuracyPercent={accuracyPercent}
-            elapsedTime={formatTime(sessionStats.duration)}
-          />
-        )}
-
-        {/* Empty state */}
-        {!formResponse && !isStreaming && (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-zinc-200 py-10 dark:border-zinc-800">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-zinc-100 dark:bg-zinc-900">
-              <Play className="h-5 w-5 text-[color:var(--muted-foreground)] ml-0.5" />
-            </div>
-            <p className="mt-3 text-sm font-medium text-[color:var(--foreground)]">
-              Ready to train
-            </p>
-            <p className="mt-1 text-xs text-[color:var(--muted-foreground)]">
-              Hit play to start AI form analysis
-            </p>
-          </div>
-        )}
-
-        {/* Status banner — uses backend state to give clear UX cues */}
-        {isStreaming && !isInitializing && (
-          <StatusBanner formResponse={formResponse} />
-        )}
-
         <CoachAgentPanel
           uid={user?.uid}
           liveExercise={formResponse?.current_exercise}
@@ -1351,26 +1358,41 @@ function StatusBanner({
 }
 
 interface ExerciseDisplayProps {
-  formResponse: FormCorrectionResponse;
+  formResponse: FormCorrectionResponse | null;
   accuracyPercent: number;
   elapsedTime: string;
 }
 
+/**
+ * Always-rendered feedback panel. Uses safe defaults when no form response is
+ * available yet so the sidebar slots (stats, exercise card, violations,
+ * corrections) keep their positions and only their contents change. This
+ * prevents layout jitter as messages stream in from the backend.
+ */
 function ExerciseDisplay({
   formResponse,
   accuracyPercent,
   elapsedTime,
 }: ExerciseDisplayProps) {
-  const hasViolations = formResponse.violations.length > 0;
-  const hasCorrections = formResponse.corrections.length > 0;
+  const repCount = formResponse?.rep_count ?? 0;
+  const confidencePct = formResponse?.confidence
+    ? (formResponse.confidence * 100).toFixed(0)
+    : '—';
+  const exerciseLabel =
+    formResponse?.exercise_display ||
+    formResponse?.current_exercise ||
+    'Waiting for exercise…';
+  const stateLabel = formResponse?.state ?? 'idle';
+  const violations = formResponse?.violations ?? [];
+  const corrections = formResponse?.corrections ?? [];
 
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-4 gap-2 sm:gap-3">
         <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
           <Target className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
-          <p className="text-lg font-bold text-[color:var(--foreground)]">
-            {formResponse.rep_count}
+          <p className="text-lg font-bold tabular-nums text-[color:var(--foreground)]">
+            {repCount}
           </p>
           <p className="text-[10px] text-[color:var(--muted-foreground)]">
             Reps
@@ -1378,7 +1400,7 @@ function ExerciseDisplay({
         </div>
         <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
           <TrendingUp className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
-          <p className="text-lg font-bold text-[color:var(--foreground)]">
+          <p className="text-lg font-bold tabular-nums text-[color:var(--foreground)]">
             {accuracyPercent}%
           </p>
           <p className="text-[10px] text-[color:var(--muted-foreground)]">
@@ -1387,7 +1409,7 @@ function ExerciseDisplay({
         </div>
         <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
           <Timer className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
-          <p className="text-lg font-bold text-[color:var(--foreground)]">
+          <p className="text-lg font-bold tabular-nums text-[color:var(--foreground)]">
             {elapsedTime}
           </p>
           <p className="text-[10px] text-[color:var(--muted-foreground)]">
@@ -1396,8 +1418,8 @@ function ExerciseDisplay({
         </div>
         <div className="rounded-xl border border-zinc-200 bg-[color:var(--background)] p-3 text-center dark:border-zinc-800">
           <Wifi className="mx-auto mb-1 h-4 w-4 text-[color:var(--muted-foreground)]" />
-          <p className="text-lg font-bold text-[color:var(--foreground)]">
-            {(formResponse.confidence * 100).toFixed(0)}%
+          <p className="text-lg font-bold tabular-nums text-[color:var(--foreground)]">
+            {confidencePct}{confidencePct !== '—' && '%'}
           </p>
           <p className="text-[10px] text-[color:var(--muted-foreground)]">
             Confidence
@@ -1410,18 +1432,18 @@ function ExerciseDisplay({
           Exercise
         </p>
         <p className="mt-1 text-sm font-medium text-[color:var(--foreground)]">
-          {formResponse.exercise_display || formResponse.current_exercise || 'Detecting'}
+          {exerciseLabel}
         </p>
         <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-[color:var(--muted-foreground)]">
           <span className="rounded-full bg-zinc-100 px-2 py-1 dark:bg-zinc-900">
-            State: {formResponse.state}
+            State: {stateLabel}
           </span>
-          {formResponse.phase_display && (
+          {formResponse?.phase_display && (
             <span className="rounded-full bg-zinc-100 px-2 py-1 dark:bg-zinc-900">
               {formResponse.phase_display}
             </span>
           )}
-          {formResponse.camera_view && (
+          {formResponse?.camera_view && (
             <span className="rounded-full bg-zinc-100 px-2 py-1 dark:bg-zinc-900">
               View: {formResponse.camera_view.replace(/_/g, ' ')}
             </span>
@@ -1429,31 +1451,70 @@ function ExerciseDisplay({
         </div>
       </div>
 
-      {hasViolations && (
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900/50 dark:bg-red-950/20">
-          <div className="mb-2 flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-red-500" />
-            <p className="text-sm font-medium text-red-700 dark:text-red-400">
-              Violations
-            </p>
-          </div>
+      {/* Reserved violations slot — empty placeholder keeps layout stable */}
+      <div
+        className={`min-h-[88px] rounded-xl border p-4 transition-colors ${
+          violations.length > 0
+            ? 'border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/20'
+            : 'border-dashed border-zinc-200 bg-transparent dark:border-zinc-800'
+        }`}
+      >
+        <div className="mb-2 flex items-center gap-2">
+          <AlertTriangle
+            className={`h-4 w-4 ${
+              violations.length > 0
+                ? 'text-red-500'
+                : 'text-[color:var(--muted-foreground)]'
+            }`}
+          />
+          <p
+            className={`text-sm font-medium ${
+              violations.length > 0
+                ? 'text-red-700 dark:text-red-400'
+                : 'text-[color:var(--muted-foreground)]'
+            }`}
+          >
+            Violations
+          </p>
+        </div>
+        {violations.length > 0 ? (
           <ul className="space-y-1">
-            {formResponse.violations.map((violation, idx) => (
-              <li key={`violation-${idx}`} className="text-xs text-red-600 dark:text-red-300">
+            {violations.map((violation, idx) => (
+              <li
+                key={`violation-${idx}`}
+                className="text-xs text-red-600 dark:text-red-300"
+              >
                 • {violation}
               </li>
             ))}
           </ul>
-        </div>
-      )}
-
-      {hasCorrections && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/50 dark:bg-emerald-950/20">
-          <p className="mb-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
-            Corrections
+        ) : (
+          <p className="text-xs text-[color:var(--muted-foreground)]">
+            No form issues detected.
           </p>
+        )}
+      </div>
+
+      {/* Reserved corrections slot — same pattern as violations above */}
+      <div
+        className={`min-h-[88px] rounded-xl border p-4 transition-colors ${
+          corrections.length > 0
+            ? 'border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/20'
+            : 'border-dashed border-zinc-200 bg-transparent dark:border-zinc-800'
+        }`}
+      >
+        <p
+          className={`mb-2 text-sm font-medium ${
+            corrections.length > 0
+              ? 'text-emerald-700 dark:text-emerald-300'
+              : 'text-[color:var(--muted-foreground)]'
+          }`}
+        >
+          Corrections
+        </p>
+        {corrections.length > 0 ? (
           <ul className="space-y-1">
-            {formResponse.corrections.map((correction, idx) => (
+            {corrections.map((correction, idx) => (
               <li
                 key={`correction-${idx}`}
                 className="text-xs text-emerald-700 dark:text-emerald-200"
@@ -1462,8 +1523,12 @@ function ExerciseDisplay({
               </li>
             ))}
           </ul>
-        </div>
-      )}
+        ) : (
+          <p className="text-xs text-[color:var(--muted-foreground)]">
+            Coaching tips will appear here once you start moving.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
